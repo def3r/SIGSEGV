@@ -6,178 +6,217 @@ struct node {
   struct node *link;
 };
 
-struct node *insertNode(struct node *head, int n) {
-  struct node *temp = (struct node *)malloc(sizeof(struct node));
-  temp->n = n;
-  temp->link = head;
-  return temp;
+struct nodeList {
+  struct node *nodes;
+  struct nodeList *link;
+};
+
+struct node *nodeInsertEnd(struct node *tail, int n) {
+  struct node *newNode = (struct node *)malloc(sizeof(struct node));
+  newNode->n = n;
+
+  if (tail == NULL) {
+    newNode->link = newNode;
+    return newNode;
+  }
+
+  newNode->link = tail->link;
+  tail->link = newNode;
+
+  return newNode;
 }
 
-struct node *insertEnd(struct node *head, int n) {
-  struct node *new = (struct node *)malloc(sizeof(struct node));
-  struct node *temp = head;
+struct nodeList *init() {
+  struct nodeList *head = NULL;
+  int totalIndx = 9;
 
-  new->n = n;
-  new->link = NULL;
+  for (int i = totalIndx; i >= 0; i--) {
+    struct nodeList *newNodeList =
+        (struct nodeList *)malloc(sizeof(struct nodeList));
+    newNodeList->nodes = NULL;
+    newNodeList->link = head;
 
-  if (head == NULL) {
-    return new;
+    head = newNodeList;
   }
 
-  while (temp->link != NULL) {
-    temp = temp->link;
-  }
-
-  temp->link = new;
   return head;
 }
 
-void displayNodes(struct node *head) {
-  struct node *temp = head;
+void insertNodeList(struct nodeList *head, int n, int pos) {
+  struct nodeList *temp = head;
+  struct node *newNode = (struct node *)malloc(sizeof(struct node));
+  newNode->n = n;
+  newNode->link = NULL;
 
-  while (temp != NULL) {
-    printf("%d ", temp->n);
+  while (pos > 0) {
     temp = temp->link;
+    pos--;
   }
-  printf("\n");
+
+  struct node *nodesAtIndx = temp->nodes;
+
+  if (nodesAtIndx == NULL) {
+    temp->nodes = newNode;
+    return;
+  }
+
+  while (nodesAtIndx->link != NULL) {
+    nodesAtIndx = nodesAtIndx->link;
+  }
+  nodesAtIndx->link = newNode;
 
   return;
 }
 
-struct node *hardCodeList(struct node *head) {
-  head = insertNode(head, 89);
-  head = insertNode(head, 589);
-  head = insertNode(head, 625);
-  head = insertNode(head, 104);
-  head = insertNode(head, 899);
-  head = insertNode(head, 123);
-  head = insertNode(head, 99);
-  head = insertNode(head, 167);
-  head = insertNode(head, 738);
-  head = insertNode(head, 6);
-
-  return head;
-}
-
-// implementing Radix Sort
-struct nodeList {
-  struct node *ptr;
-  struct nodeList *link;
-};
-
-struct node *remakeList(struct nodeList *head) {
-  struct node *newList = NULL;
-  struct nodeList *iter = head;
-
-  while (iter != NULL) {
-    struct node *memb = iter->ptr;
-
-    while (memb != NULL) {
-      newList = insertEnd(newList, memb->n);
-      memb = memb->link;
-    }
-
-    iter = iter->link;
-  }
-
-  return newList;
-}
-
-struct nodeList *init() {
+struct node *remakeIt(struct nodeList *originalHead) {
+  struct nodeList *head = originalHead;
+  struct node *theHead = NULL;
+  struct node *theTail = NULL;
   int i = 0;
-  struct nodeList *head = NULL;
 
   for (i = 0; i < 10; i++) {
-    struct nodeList *temp = (struct nodeList *)malloc(sizeof(struct nodeList));
-    temp->ptr = NULL;
-    temp->link = head;
+    if (head->nodes == NULL) {
+      head = head->link;
+      continue;
+    }
 
-    head = temp;
+    struct node *temp = head->nodes;
+
+    if (theHead == NULL) {
+      theHead = temp;
+    }
+    if (theTail != NULL) {
+      theTail->link = temp;
+    }
+    while (temp->link != NULL) {
+      temp = temp->link;
+    }
+    temp->link = theHead;
+    theTail = temp;
+
+    head->nodes = NULL;
+    head = head->link;
   }
 
-  return head;
+  return theTail;
 }
 
-void printList(struct nodeList *head) {
-    struct nodeList *current = head;
-    int count = 0;
+int countNodeList(struct nodeList *head) {
+  struct nodeList *temp = head;
+  int count = 0;
 
-    while (current != NULL) {
-        printf("Node %d\n", count++);
-        current = current->link;
-    }
-}
-
-struct node *radixSort(struct nodeList *list, struct node *head) {
-  struct nodeList *tempList = list;
-  struct node *temp = head;
-  int pass = 0;
-  int max = head->n;
-  int digiPlace = 10;
-  int i = 0;
-
-  // calc pass:
   while (temp != NULL) {
-    if (temp->n > max) {
-      max = temp->n;
-    }
+    count++;
     temp = temp->link;
   }
-  while (max != 0) {
-    max = max / 10;
-    pass++;
+
+  return count;
+}
+
+void displayNodes(struct node *tail) {
+  if (tail == NULL) {
+    return;
   }
 
-  temp = head;
-  while (pass > 0) {
-    while (temp != NULL) {
-      int d = (temp->n % digiPlace) / (digiPlace / 10);
+  struct node *head = tail->link;
+  int completeFlag = 0;
 
-      tempList = list;
-      for (i = 0; i < d; i++) {
-        tempList = tempList->link;
-      }
+  while (!completeFlag) {
+    printf("%d ", head->n);
+    head = head->link;
 
-      // insertion at end
-      struct node *listNode = tempList->ptr;
-      struct node *newNode = (struct node *)malloc(sizeof(struct node));
-      newNode->n = temp->n;
-
-      temp = temp->link;
-
-      if (listNode == NULL) {
-        tempList->ptr = newNode;
-        newNode->link = NULL;
-        continue;
-      }
-
-      while (listNode->link != NULL) {
-        listNode = listNode->link;
-      }
-      listNode->link = newNode;
-      newNode->link = NULL;
+    if (head == tail->link) {
+      completeFlag = 1;
     }
-    pass--;
-    digiPlace *= 10;
-    temp = remakeList(list);
-    list = init();
   }
 
-  return temp;
+  return;
+}
+
+struct node *hardCodeNodes(struct node *tail) {
+  tail = nodeInsertEnd(tail, 782);
+  tail = nodeInsertEnd(tail, 82);
+  tail = nodeInsertEnd(tail, 375);
+  tail = nodeInsertEnd(tail, 9);
+  tail = nodeInsertEnd(tail, 283);
+  tail = nodeInsertEnd(tail, 832);
+  tail = nodeInsertEnd(tail, 387);
+  tail = nodeInsertEnd(tail, 102);
+  tail = nodeInsertEnd(tail, 38);
+
+  return tail;
+}
+
+int rdxSortPassCount(struct node *tail) {
+  struct node *temp = tail->link;
+  int max = temp->n;
+  int completeFlag = 0;
+  int pass = 0;
+
+  while (!completeFlag) {
+    if (max < temp->n) {
+      max = temp->n;
+    }
+
+    temp = temp->link;
+    if (temp == tail->link) {
+      completeFlag = 1;
+    }
+  }
+
+  while (max != 0) {
+    pass++;
+    max = max / 10;
+  }
+
+  return pass;
+}
+
+struct node *radixSort(struct node *tail) {
+  if (tail == NULL) {
+    return NULL;
+  }
+
+  struct nodeList *container = NULL;
+  int pass = rdxSortPassCount(tail);
+  int powerTo10 = 10;
+
+  while (pass > 0) {
+    struct node *head = tail->link;
+    int completeFlag = 0;
+    container = init();
+
+    while (!completeFlag) {
+      int digit = (head->n % powerTo10) / (powerTo10 / 10);
+      insertNodeList(container, head->n, digit);
+
+      head = head->link;
+      if (head == tail->link) {
+        completeFlag = 1;
+      }
+    }
+
+    tail = remakeIt(container);
+    powerTo10 *= 10;
+    pass--;
+  }
+
+  return tail;
 }
 
 int main() {
-  struct node *head = NULL;
-  struct nodeList *list = NULL;
-  // hard code 10 values
-  head = hardCodeList(head);
-  list = init();
+  struct node *tail = NULL;
+  tail = hardCodeNodes(tail);
 
-  displayNodes(head);
+  struct nodeList *test = NULL;
+  test = init();
 
-  head = radixSort(list, head);
+  displayNodes(tail);
+  printf("\ntest contains %d nodeList nodes", countNodeList(test));
 
-  displayNodes(head);
+  tail = radixSort(tail);
+  printf("\n");
+  displayNodes(tail);
 
   return 0;
 }
