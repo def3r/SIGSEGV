@@ -150,21 +150,6 @@ public:
   int myAccNo() { return this->accNum; }
   double myAccBal() { return this->balance; }
   int myLinkAcc() { return this->linkedAcc; }
-
-  void empty() {
-    if (!this->linkedAcc) {
-      cout << "Transation Failed:" << endl;
-      cout << "No Linked SavingAcc to transfer money to." << endl;
-      return;
-    }
-
-    allSavingAcc[this->linkedAcc]->deposit(this->balance);
-    this->balance = 0;
-
-    cout << "Transation Successfull";
-
-    return;
-  }
 };
 
 void linkAccounts(SavingAcc &sva, FlexFDAcc &fda) {
@@ -341,6 +326,7 @@ void uiCreateAcct(int accType) {
   if (accType == 1) {
     SavingAcc *newAcc = crtSavingAcc(initBal, pin, fullUsrName);
     newAcc->DisplayAcc();
+    return;
   }
 
   FlexFDAcc *newAcc = crtFlexFDAcc(initBal, pin, fullUsrName);
