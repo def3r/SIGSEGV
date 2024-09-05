@@ -11,6 +11,7 @@ declare -A flags
 # init to 1 -> false
 flags["-q"]=1;
 flags["-!x"]=1;
+flags["-g"]=1;
 
 for arg in "$@"; do
   if [ $arg == $1 ]; then
@@ -40,6 +41,10 @@ EXTENSION="c"
 if echo $1 | grep -q ".cpp"; then
   COMPILER="g++"
   EXTENSION="cpp"
+fi
+
+if [ ${flags["-g"]} -ne 1 ]; then
+  COMPILER="$COMPILER -g"
 fi
 
 # echo "-q flag: "${flags["-q"]}
