@@ -2,4 +2,4 @@
 *.exe
 *.o
 *.a
-
+*.clang-format
