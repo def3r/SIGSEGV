@@ -1,3 +1,4 @@
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -144,6 +145,61 @@ int* heapSort(int* arr, int size, int pos) {
   return arr;
 }
 
+int numLen(int n) {
+  int len = 1;
+  while (n /= 2) {
+    len++;
+  }
+
+  return len;
+}
+
+void treeify(int* mHeap, int size, int pos) {
+  printf("Treeify!\n");
+
+  int dBwChild = 5;
+  int originalPos = pos;
+  double levels = 1.0;
+
+  while (pos /= 2) {
+    levels += 1.0;
+  }
+
+  int maxEl = pow(2, levels);
+  int maxLen = (maxEl - 1) * dBwChild;
+
+  int i = 0;
+  int currLevel = 0;
+  int slice = maxLen;
+  while (i != originalPos) {
+    // int initSpaces = dBwChild * (levels - currLevel);
+    slice /= 2;
+    int initSpaces = slice;
+    while (initSpaces-- > 0) {
+      printf(" ");
+    }
+
+    int n = 0;
+    int err = 0;
+    while (n < pow(2, currLevel) && i != originalPos) {
+      printf("%d", *(mHeap + i++));
+      n++;
+
+      int spaces = (2 * slice) - err;  // - (numLen(*(mHeap + i++)));
+                                       // spaces = maxLen / (currLevel + 2);
+      if (n % 2) {
+        err += 2;
+      }
+      while (spaces-- > 0) {
+        printf(" ");
+      }
+    }
+
+    currLevel++;
+    printf("\n\n");
+  }
+}
+
 int main() {
   int hSize = 31;  // 5 levels
   int pos = 0;
@@ -182,6 +238,8 @@ int main() {
 
   printf("Searching for 15: %d\n", searchInHeap(&mHeap[0], hSize, pos, 15));
 
+  treeify(&mHeap[0], hSize, pos);
+
   printf("\n\nThe dynamic part:");
   printf("\nEnter Total Elements in your Array: ");
   scanf("%d", &totalEl);
@@ -212,6 +270,8 @@ int main() {
   printf("In place Heap Sort on the array: ");
   heapSort(&arrToHeap[0], hSize, pos2);
   heapDisplay(&arrToHeap[0], hSize, pos2);
+
+  treeify(&arrToHeap[0], hSize, pos2);
 
   return 0;
 }
