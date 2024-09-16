@@ -1,0 +1,14 @@
+	   MVI C,05
+	   LXI H,3000
+	   LXI D,3500
+
+ODDLOOP:	   MOV A,M
+	   ANI 01
+	   JNZ ODDCONT
+	   MOV A,M
+	   STAX D
+	   INX D
+
+ODDCONT:	   INX H
+	   DCR C
+	   JNZ ODDLOOP
