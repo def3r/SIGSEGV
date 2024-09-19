@@ -1,11 +1,10 @@
-	   MVI C,0F
-	   LXI H,3000
-	   LXI D,3500
+	   MVI C,0A
+	   LXI H,2500
+	   LXI D,3000
 
 ODDLOOP:	   MOV A,M
-	   ANI 01
-	   JZ ODDCONT
-	   MOV A,M
+	   ORI 00
+	   JPE ODDCONT
 	   STAX D
 	   INX D
 
@@ -13,14 +12,13 @@ ODDCONT:	   INX H
 	   DCR C
 	   JNZ ODDLOOP
 
-	   MVI C,0F
-	   LXI H,3000
-	   LXI D,4500
+	   MVI C,0A
+	   LXI H,2500
+	   LXI D,4000
 
 EVENLOOP:	   MOV A,M
-	   ANI 01
-	   JNZ EVENCONT
-	   MOV A,M
+	   ORI 00
+	   JPO EVENCONT
 	   STAX D
 	   INX D
 

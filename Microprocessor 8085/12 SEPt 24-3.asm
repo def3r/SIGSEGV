@@ -1,29 +1,25 @@
-// USR INPUT @ 2000H
-	   LXI D,2000
-	   LDAX D
-	   MOV C,A
-	   INX D
+	   LXI H,2000
+	   MOV C,M
+	   DCR C
 
-PLOOP:	   MOV L,E
-	   MOV H,D
-	   MOV B,C
+PLOOP:	   LXI H,2001
 
 CLOOP:	   MOV A,M
 	   INX H
 	   CMP M
+	   JC CONT
 	   JZ CONT
-	   JNC CONT
 	   MOV B,A
 	   MOV A,M
 	   DCX H
 	   MOV M,A
-	   MOV A,B
 	   INX H
-	   MOV M,A
+	   MOV M,B
 
-CONT:	   DCR B
+CONT:	   DCR C
 	   JNZ CLOOP
+	   MOV C,L
 	   DCR C
-	   INX D
+	   DCR C
 	   JNZ PLOOP
 	   RST 1
