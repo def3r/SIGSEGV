@@ -1,14 +1,13 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#define MAX 5000
 
 char *filter(char *c, char *src) {
   if (!c) {
-    c = src;
-  } else {
-    c++;
+    return src;
   }
-
-  return c;
+  return ++c;
 }
 
 int main(int argc, char **argv) {
@@ -23,15 +22,37 @@ int main(int argc, char **argv) {
     return 1;
   }
 
+  /* Conditions:
+   * 1. cp path/to/src/file.ext path/to/dest/
+   * 2. cp path/to/src/file.ext path/to/dest/newFileName.ext
+   *
+   * Well, truns out im a fucking idiot
+   */
+
+  char bffr[MAX];
+  char *src = argv[1];
+  char *des = argv[2];
   char *srcfName = filter(strrchr(argv[1], '/'), argv[1]);
   char *desfName = filter(strrchr(argv[2], '/'), argv[2]);
   if (strcmp(desfName, "") == 0) {
     desfName = srcfName;
+    strcat(des, srcfName);
   }
 
-  FILE *sf = fopen(argv[1], "r");
-  FILE *df = fopen()
-  printf("file names: %s, %s", srcfName, desfName);
+  FILE *sf = fopen(src, "r");
+  FILE *df = fopen(des, "w");
+  if (!sf) {
+    printf("Unable to open file '%s'", src);
+    exit(1);
+  }
+  if (!df) {
+    printf("Unable to open file '%s'", des);
+    exit(1);
+  }
+
+  while (fgets(bffr, MAX, sf)) {
+    fputs(bffr, df);
+  }
 
   return 0;
 }

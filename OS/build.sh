@@ -23,4 +23,4 @@ if [ $? -ne 0 ]; then
   exit
 fi
 
-./$filename $2
+./$filename $(echo $@ | sed "s/^$1 //")

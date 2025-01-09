@@ -101,7 +101,6 @@ int main(int argc, char **argv) {
   }
 
   FILE *f;
-  Count count = {.lines = 0, .words = 0, .chars = 0};
   Flags flags = {.l = false, .w = false, .m = false};
   setFlags((CLArgs){.curr = 1, .argc = argc, .argv = argv}, &flags);
 
@@ -114,6 +113,7 @@ int main(int argc, char **argv) {
       printf("Can't find the file %s", argv[i]);
       return 1;
     }
+    Count count = {.lines = 0, .words = 0, .chars = 0};
     calculate(f, &count);
     display(flags, count);
     printf("%s\n", argv[i]);
