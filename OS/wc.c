@@ -117,6 +117,7 @@ int main(int argc, char **argv) {
     calculate(f, &count);
     display(flags, count);
     printf("%s\n", argv[i]);
+    fclose(f);
   }
   return 0;
 }

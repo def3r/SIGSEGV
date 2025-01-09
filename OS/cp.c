@@ -10,6 +10,14 @@ char *filter(char *c, char *src) {
   return ++c;
 }
 
+void fStatus(FILE *f, const char *fName) {
+  if (f) {
+    return;
+  }
+  printf("Unable to find file %s", fName);
+  exit(1);
+}
+
 int main(int argc, char **argv) {
   if (argc == 1) {
     printf("No file provided");
@@ -41,18 +49,14 @@ int main(int argc, char **argv) {
 
   FILE *sf = fopen(src, "r");
   FILE *df = fopen(des, "w");
-  if (!sf) {
-    printf("Unable to open file '%s'", src);
-    exit(1);
-  }
-  if (!df) {
-    printf("Unable to open file '%s'", des);
-    exit(1);
-  }
+  fStatus(sf, src);
+  fStatus(df, des);
 
   while (fgets(bffr, MAX, sf)) {
     fputs(bffr, df);
   }
 
+  fclose(sf);
+  fclose(df);
   return 0;
 }
