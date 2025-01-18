@@ -1,5 +1,4 @@
 *.out
 *.exe
-*.o
-*.a
+*.[aeiou]
 *.clang-format
