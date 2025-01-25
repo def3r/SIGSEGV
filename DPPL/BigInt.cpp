@@ -6,32 +6,43 @@
 
 class ExtremelyBigInt {
 public:
-  ExtremelyBigInt(std::string EBI) {
-    ExtremelyBigInt::clean(EBI);
-    if (EBI == "") {
-      digiStore.push_back(0);
-      return;
-    }
-
-    // clang-format off
-    while (EBI.size() > BLOCK_SIZE) {
-      digiStore.push_back(
-        std::stoull(EBI.substr(EBI.length() - BLOCK_SIZE))
-      );
-      EBI = EBI.substr(0, EBI.length() - BLOCK_SIZE);
-    }
-    digiStore.push_back(std::stoull(EBI));
-    // clang-format on
-  }
+  ExtremelyBigInt(std::string EBI) { assign(EBI); }
 
   int digiCount() { return this->toString().length(); }
 
   std::string toString() {
     std::string displayStr = "";
+    int idx = 0;
+    const int digiStoreSize = digiStore.size();
     for (auto &digi : digiStore) {
       displayStr = std::to_string(digi) + displayStr;
+      const int len = displayStr.length();
+      if (len % BLOCK_SIZE && idx != digiStoreSize - 1) {
+        // clang-format off
+        displayStr = ExtremelyBigInt::zeroes(
+          BLOCK_SIZE - len % BLOCK_SIZE
+        ) + displayStr;
+        // clang-format on
+      }
+      idx++;
     }
+    displayStr.erase(0, displayStr.find_first_not_of('0'));
     return displayStr;
+  }
+
+  // Toom Cook Algorithm is lit for Multiplication
+  // But I ain't implementin that incredible algo
+  // with poor code quality (skill issue, fr, fr)
+  ExtremelyBigInt operator*(ExtremelyBigInt EBI) {
+    ExtremelyBigInt result("");
+    this->painfulMultiply(EBI.digiStore, result);
+    return result;
+  }
+  ExtremelyBigInt operator*(long long int multiplicant) {
+    ExtremelyBigInt result("");
+    auto parsedMultiplicant = ExtremelyBigInt::Parse(multiplicant);
+    this->painfulMultiply(parsedMultiplicant, result);
+    return result;
   }
 
   ExtremelyBigInt operator+(ExtremelyBigInt EBI) {
@@ -70,6 +81,11 @@ public:
     return result;
   }
 
+  void operator=(std::string EBI) {
+    assign(EBI);
+    return;
+  }
+
   friend std::ostream &operator<<(std::ostream &, ExtremelyBigInt &);
 
   static int digiCount(size_t n) {
@@ -77,6 +93,13 @@ public:
     while (n / 10)
       count++, n = n / 10;
     return count;
+  }
+
+  static std::string zeroes(size_t n) {
+    std::string res = "";
+    while (n)
+      res += "0", n--;
+    return res;
   }
 
 protected:
@@ -104,6 +127,60 @@ protected:
       return;
     }
     digi = temp;
+  }
+
+  void painfulMultiply(std::vector<unsigned long long> parsedMultiplicant,
+                       ExtremelyBigInt &result) {
+    int idx = 0;
+    for (const auto &digi : parsedMultiplicant) {
+      int pow = idx++;
+      for (const auto &blockData : digiStore) {
+        // BLOCK_SIZE = 18
+        // Worst Case: Parsed Size = 18
+        // Worst Case for 18x18 digit multiplication: result = 18 Digits
+        // thus, break into 9x9 = 18 Digits -> add to result
+        const long long TENP9 = std::pow(10, 9);
+
+        long long int res = (digi % TENP9) * (blockData % TENP9);
+        ExtremelyBigInt EBIres(std::to_string(res) +
+                               ExtremelyBigInt::zeroes(18 * pow));
+        result = result + EBIres;
+
+        res = (digi / TENP9) * (blockData % TENP9);
+        EBIres = std::to_string(res) + ExtremelyBigInt::zeroes(18 * pow) +
+                 ExtremelyBigInt::zeroes(9);
+        result = result + EBIres;
+
+        res = (digi % TENP9) * (blockData / TENP9);
+        EBIres = std::to_string(res) + ExtremelyBigInt::zeroes(18 * pow) +
+                 ExtremelyBigInt::zeroes(9);
+        result = result + EBIres;
+
+        res = (digi / TENP9) * (blockData / TENP9);
+        EBIres = std::to_string(res) + ExtremelyBigInt::zeroes(18 * (pow + 1));
+        result = result + EBIres;
+        pow++;
+      }
+    }
+  }
+
+  void assign(std::string EBI) {
+    digiStore.clear();
+    ExtremelyBigInt::clean(EBI);
+    if (EBI == "") {
+      digiStore.push_back(0);
+      return;
+    }
+
+    // clang-format off
+    while (EBI.size() > BLOCK_SIZE) {
+      digiStore.push_back(
+        std::stoull(EBI.substr(EBI.length() - BLOCK_SIZE))
+      );
+      EBI = EBI.substr(0, EBI.length() - BLOCK_SIZE);
+    }
+    digiStore.push_back(std::stoull(EBI));
+    // clang-format on
   }
 
   static inline int BLOCK_SIZE = 18;
@@ -155,6 +232,18 @@ int main() {
   std::cout << k << "\n";
   k = j - i;
   std::cout << k << "\n";
+
+  i = "12345678910111213141511617";
+  j = "5678";
+  k = i * j;
+  std::cout << i << " " << k << "\n";
+  k = i * i;
+  std::cout << i << " " << k << "\n";
+
+  ExtremelyBigInt l("1234567891011121314151617181912021222324252627282930");
+  std::cout << "And now, for the destruction of cpu:\n";
+  k = l * l * l * l;
+  std::cout << k << "\t\t" << k.digiCount() << '\n';
 
   return 0;
 }
