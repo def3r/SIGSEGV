@@ -18,9 +18,9 @@ if [[ $isCpp != "" ]]; then
   compiler="g++"
 fi
 
-$compiler $1 -o $filename
+$compiler $1 -o "$filename.out"
 if [ $? -ne 0 ]; then
   exit
 fi
 
-./$filename $(echo $@ | sed "s/^$1 //")
+"./$filename.out" $(echo $@ | sed "s/^$1 //")
