@@ -1,6 +1,7 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 int main() {
@@ -13,6 +14,7 @@ int main() {
 
   while (1) {
     ptr = malloc(1024);
+    memset(ptr, 0, 1024);
     printf("\033[2k\r%lld", ++size);
     float mb = size / 1024.0f;
     float gb = mb / 1024.0f;
