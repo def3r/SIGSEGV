@@ -11,6 +11,8 @@ int main() {
   int fd;
   char bffr[40];
   void* ptr;
+  fd = creat("size.txt", 0777);
+  close(fd);
 
   while (1) {
     ptr = malloc(1024);
