@@ -8,35 +8,76 @@
 #include <utility>
 #include <vector>
 
+// g++ MarkdownParser.cpp -L. -lftxui-component -lftxui-dom -lftxui-screen
+
 using namespace ftxui;
+class MarkdownRenderer;
+
+enum Style { BOLD, CODE, CODEBLOCK, ITALIC };
+typedef std::vector<Style> Styles;
+
+class Grammar {
+ public:
+  typedef struct Rules {
+    std::vector<std::pair<unsigned int, Styles>> rules = {};
+
+    Rules() {}
+
+    template <typename... Args>
+    Rules& add(unsigned int count, Args... args) {
+      static_assert((std::is_same_v<Args, Style> && ...),
+                    "Only Style types are allowed!");
+      if (count == 0)
+        return *this;
+      rules.push_back({count, (Styles){args...}});
+      return *this;
+    }
+
+  } Rules;
+
+  Grammar() {}
+
+  Rules& operator[](const char& c) {
+    if (rules.find(c) == rules.end()) {
+      rules[c] = {};
+    }
+    return rules[c];
+  }
+
+  friend class MarkdownRenderer;
+
+ private:
+  std::unordered_map<char, Rules> rules;
+};
 
 class MarkdownRenderer {
  public:
-  MarkdownRenderer() { MarkdownRenderer::populateMap(); };
+  MarkdownRenderer() {
+    MarkdownRenderer::populateMap();
+    MarkdownRenderer::populateGrammar();
+  };
 
   void Parse(const std::string& line) {
     parsed = {};
     begin = line.begin();
     int count = 1;
+    auto& grammar = MarkdownRenderer::grammar.rules;
     for (it = line.begin(); it != line.end(); ++it) {
-      if (*it == '*') {
-        count = lookAhead(line, '*');
-        if (count == 1) {
-          ParseUtil("dim");
-        } else if (count == 2) {
-          ParseUtil("bold");
+      if (grammar.find(*it) == grammar.end()) {
+        continue;
+      }
+      updateBegin = true;
+      count = lookAhead(line, *it);
+      auto rules = grammar[*it].rules;
+      for (auto rule = rules.begin(); rule != rules.end(); ++rule) {
+        if (count < rule->first && rule != rules.begin()) {
+          count = (--rule)->first;
+          ParseUtil((rule)->second);
+          break;
         }
-      } else if (*it == '`') {
-        count = lookAhead(line, '`');
-        if (count == 1) {
-          ParseUtil("inverted");
-        } else if (count == 3) {
-          ParseUtil("inverted");
-        }
-      } else if (*it == '_') {
-        count = lookAhead(line, '_');
-        if (count == 1) {
-          ParseUtil("dim");
+        if (count == rule->first) {
+          ParseUtil(rule->second);
+          break;
         }
       }
 
@@ -45,9 +86,6 @@ class MarkdownRenderer {
         it = it + --count;
         updateBegin = false;
       }
-
-      prev = *it;
-      backtickCount = 0;
     }
     PushText();
   }
@@ -55,7 +93,7 @@ class MarkdownRenderer {
   void PrintParsed() {
     for (auto it = parsed.begin(); it != parsed.end(); ++it) {
       std::cout << it->first << "\t\t:\t\t";
-      std::vector<std::string>& styles = it->second;
+      Styles& styles = it->second;
       for (auto& style : styles) {
         std::cout << style << "\t";
       }
@@ -67,7 +105,7 @@ class MarkdownRenderer {
     auto container = Container::Horizontal({});
     for (auto it = parsed.begin(); it != parsed.end(); ++it) {
       auto item = text(it->first);
-      std::vector<std::string>& styles = it->second;
+      Styles& styles = it->second;
       for (auto& style : styles) {
         item |= MarkdownRenderer::decorator[style];
       }
@@ -82,15 +120,13 @@ class MarkdownRenderer {
   void clear() {
     std::string s = "";
     begin = s.end(), it = s.end();
-    prev = '\0';
     updateBegin = false;
-    backtickCount = 0;
 
     style = {}, parsed = {};
   }
 
  private:
-  int lookAhead(const std::string& line, char&& c) {
+  int lookAhead(const std::string& line, const char& c) {
     int count = 1;
     while ((it + count) != line.end() && *(it + count) == c) {
       count++;
@@ -98,13 +134,14 @@ class MarkdownRenderer {
     return count;
   }
 
-  void ParseUtil(const std::string& parsedStyle) {
-    updateBegin = true;
+  void ParseUtil(const Styles& parsedStyles) {
     PushText();
-    if (ToPush(parsedStyle)) {
-      style.push_back(parsedStyle);
+    if (ToPush(parsedStyles)) {
+      for (auto& parsedStyle : parsedStyles)
+        style.push_back(parsedStyle);
     } else {
-      style.pop_back();
+      for (int i = parsedStyles.size(); i > 0; i--)
+        style.pop_back();
     }
   }
 
@@ -115,25 +152,43 @@ class MarkdownRenderer {
     }
   }
 
-  bool ToPush(const std::string& s) {
+  bool ToPush(const Styles& s) {
     if (style.empty())
       return true;
-    return (style.back() != s);
+    return (style.back() != s.back());
   }
 
   std::string::const_iterator begin, it;
-  char prev = '\0';
   bool updateBegin = false;
-  int backtickCount = 0;
 
-  std::vector<std::string> style = {};
-  std::vector<std::pair<std::string, std::vector<std::string>>> parsed = {};
+  Styles style = {};
+  std::vector<std::pair<std::string, Styles>> parsed = {};
 
-  inline static std::unordered_map<std::string, Decorator> decorator;
+  inline static std::unordered_map<Style, Decorator> decorator;
   inline static void populateMap() {
-    MarkdownRenderer::decorator["bold"] = bold;
-    MarkdownRenderer::decorator["inverted"] = inverted;
-    MarkdownRenderer::decorator["dim"] = dim;
+    MarkdownRenderer::decorator[Style::BOLD] = bold;
+    MarkdownRenderer::decorator[Style::CODE] = inverted;
+    MarkdownRenderer::decorator[Style::ITALIC] = dim;
+    MarkdownRenderer::decorator[Style::CODEBLOCK] = inverted;
+  }
+  inline static Grammar grammar;
+  inline static void populateGrammar() {
+    // clang-format off
+    MarkdownRenderer::grammar
+      ['*']
+      .add(1, Style::ITALIC)
+      .add(2, Style::BOLD);
+
+    MarkdownRenderer::grammar
+      ['_']
+      .add(1, Style::ITALIC)
+      .add(2, Style::BOLD);
+
+    MarkdownRenderer::grammar
+      ['`']
+      .add(1, Style::CODE)
+      .add(3, Style::CODE);
+    // clang-format on
   }
 };
 
@@ -144,6 +199,7 @@ int main() {
   lines.push_back(
       "Clas**sic: `The work`** is `mysterious` & **`important`** Works?");
   lines.push_back("*italic* & _italic_");
+  lines.push_back("This ``shouldn't ``print");
   lines.push_back("```");
   lines.push_back("#include <unistd.h>");
   lines.push_back("");
@@ -155,11 +211,9 @@ int main() {
   auto container = Container::Vertical({});
   for (auto& line : lines) {
     std::cout << line << "\n";
-    // container->Add(std::move(m.getComponent()));
   }
   for (auto& line : lines) {
     m.Parse(line);
-    // std::cout << line << "\n";
     container->Add(std::move(m.getComponent()));
     m.PrintParsed();
   }
