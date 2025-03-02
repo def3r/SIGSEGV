@@ -2,8 +2,10 @@
 #include "ftxui/component/screen_interactive.hpp"
 
 #include <ftxui/dom/elements.hpp>
+#include <ftxui/screen/color.hpp>
 #include <iostream>
 #include <iterator>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -11,11 +13,27 @@
 
 using namespace ftxui;
 
+enum Style {
+  NONE = 0,
+  H1 = 1,
+  H2 = 2,
+  H3 = 3,
+  H4 = 4,
+  H5 = 5,
+  H6 = 6,
+  BOLD,
+  CODE,
+  CODEBLOCK,
+  ITALIC,
+};
+typedef std::vector<Style> Styles;
+
 class MarkdownRenderer {
  public:
   MarkdownRenderer() { MarkdownRenderer::populateMap(); };
 
   void Parse(const std::string& line) {
+    lineStyle = Style::NONE;
     parsed = {};
     bffrline = line;
     begin = bffrline.begin();
@@ -33,30 +51,39 @@ class MarkdownRenderer {
             isFirst = false;
             continue;
           }
-          ParseUtil("dim");
+          ParseUtil(Style::ITALIC);
         } else if (count == 2) {
-          ParseUtil("bold");
+          ParseUtil(Style::BOLD);
         }
       } else if (*it == '`') {
         count = lookAhead(line, '`');
         if (count == 1) {
-          ParseUtil("inverted");
+          ParseUtil(Style::CODE);
         } else if (count < 3) {
           count = 1;
-          ParseUtil("inverted");
+          ParseUtil(Style::CODE);
         } else if (count == 3) {
-          ParseUtil("inverted");
+          ParseUtil(Style::CODE);
         }
       } else if (*it == '_') {
         count = lookAhead(line, '_');
         if (count == 1) {
-          ParseUtil("dim");
+          ParseUtil(Style::ITALIC);
         }
       } else if (*it == '-') {
         count = lookAhead(line, '-');
         if (count == 1 && followsWhiteSpace && isFirst) {
           pos = std::distance(begin, it);
           bffrline.replace(pos, 1, "•");
+          isFirst = false;
+          continue;
+        }
+      } else if (*it == '#' && isFirst) {
+        count = lookAhead(bffrline, '#');
+        if (followsWhiteSpace) {
+          lineStyle = (Style)count;
+          pos = std::distance(begin, it);
+          bffrline.replace(pos, count + 1, "");  // +1 for the WhiteSpace
           isFirst = false;
           continue;
         }
@@ -75,14 +102,19 @@ class MarkdownRenderer {
     PushText();
   }
 
-  void PrintParsed() {
+  void Debug() {
+    std::stringstream lineStyleStr;
+    if (lineStyle != Style::NONE) {
+      lineStyleStr << lineStyle;
+    }
+
     for (auto it = parsed.begin(); it != parsed.end(); ++it) {
       std::cout << it->first << "\t\t:\t\t";
-      std::vector<std::string>& styles = it->second;
+      Styles& styles = it->second;
       for (auto& style : styles) {
         std::cout << style << "\t";
       }
-      std::cout << "\n";
+      std::cout << lineStyleStr.str() << "\n";
     }
   }
 
@@ -90,7 +122,7 @@ class MarkdownRenderer {
     auto container = Container::Horizontal({});
     for (auto it = parsed.begin(); it != parsed.end(); ++it) {
       auto item = text(it->first);
-      std::vector<std::string>& styles = it->second;
+      Styles& styles = it->second;
       for (auto& style : styles) {
         item |= MarkdownRenderer::decorator[style];
       }
@@ -98,6 +130,9 @@ class MarkdownRenderer {
     }
     if (parsed.empty()) {
       container->Add(Renderer([] { return text(""); }));
+    }
+    if (lineStyle != Style::NONE) {
+      container |= MarkdownRenderer::decorator[lineStyle];
     }
     return container;
   }
@@ -120,7 +155,7 @@ class MarkdownRenderer {
     return count;
   }
 
-  void ParseUtil(const std::string& parsedStyle) {
+  void ParseUtil(const Style& parsedStyle) {
     updateBegin = true;
     PushText();
     if (ToPush(parsedStyle)) {
@@ -137,26 +172,32 @@ class MarkdownRenderer {
     }
   }
 
-  bool ToPush(const std::string& s) {
+  bool ToPush(const Style& s) {
     if (style.empty())
       return true;
     return (style.back() != s);
   }
 
   std::string::const_iterator begin, it;
-  char prev = '\0';
   bool updateBegin = false;
   bool followsWhiteSpace = false;
   std::string bffrline;
 
-  std::vector<std::string> style = {};
-  std::vector<std::pair<std::string, std::vector<std::string>>> parsed = {};
+  Styles style = {};
+  Style lineStyle = Style::NONE;
+  std::vector<std::pair<std::string, Styles>> parsed = {};
 
-  inline static std::unordered_map<std::string, Decorator> decorator;
+  inline static std::unordered_map<Style, Decorator> decorator;
   inline static void populateMap() {
-    MarkdownRenderer::decorator["bold"] = bold;
-    MarkdownRenderer::decorator["inverted"] = inverted;
-    MarkdownRenderer::decorator["dim"] = dim;
+    MarkdownRenderer::decorator[Style::BOLD] = bold;
+    MarkdownRenderer::decorator[Style::CODE] = inverted;
+    MarkdownRenderer::decorator[Style::ITALIC] = dim;
+    MarkdownRenderer::decorator[Style::H1] = bgcolor(Color::Red3);
+    MarkdownRenderer::decorator[Style::H2] = bgcolor(Color::Green3);
+    MarkdownRenderer::decorator[Style::H3] = bgcolor(Color::Blue3);
+    MarkdownRenderer::decorator[Style::H4] = bgcolor(Color::Red);
+    MarkdownRenderer::decorator[Style::H5] = bgcolor(Color::Green);
+    MarkdownRenderer::decorator[Style::H6] = bgcolor(Color::Blue);
   }
 };
 
@@ -166,7 +207,7 @@ int main() {
   std::vector<std::string> lines;
   lines.push_back(
       "Clas**sic: `The work`** is `mysterious` & **`important`** Works?");
-  lines.push_back("*italic* & _italic_");
+  lines.push_back("*italic* & _italic_ # no heading");
   lines.push_back("This ``should be ``invisible");
   lines.push_back("```");
   lines.push_back("#include <unistd.h>");
@@ -178,20 +219,24 @@ int main() {
   lines.push_back("* this is a point!");
   lines.push_back("- this is also a point!");
   lines.push_back("but - this is not a point!");
-  lines.push_back("and * neither this");
+  lines.push_back("and * neither this *");
+  lines.push_back("# Heading 1 **on fuego**");
+  lines.push_back("## Heading 2 `this is inverted lol`");
+  lines.push_back("### Heading 3");
+  lines.push_back("#### Heading 4");
+  lines.push_back("##### Heading 5");
+  lines.push_back("###### Heading 6");
 
   auto container = Container::Vertical({});
   for (auto& line : lines) {
     std::cout << line << "\n";
-    // container->Add(std::move(m.getComponent()));
   }
   for (auto& line : lines) {
     m.Parse(line);
-    // std::cout << line << "\n";
     container->Add(std::move(m.getComponent()));
-    m.PrintParsed();
+    m.Debug();
   }
 
-  std::cout << "Parsed:\n";
+  std::cout << "\nParsed:\n";
   screen.Loop(container);
 }
