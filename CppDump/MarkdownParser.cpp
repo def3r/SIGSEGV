@@ -5,6 +5,7 @@
 #include <ftxui/screen/color.hpp>
 #include <iostream>
 #include <iterator>
+#include <ostream>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -29,11 +30,12 @@ enum Style {
 typedef std::vector<Style> Styles;
 
 class MarkdownRenderer {
- public:
+public:
   MarkdownRenderer() { MarkdownRenderer::populateMap(); };
 
-  void Parse(const std::string& line) {
-    lineStyle = Style::NONE;
+  void Parse(const std::string &line) {
+    lineStyle =
+        (lineStyle != Style::CODEBLOCK) ? Style::NONE : Style::CODEBLOCK;
     parsed = {};
     bffrline = line;
     begin = bffrline.begin();
@@ -62,8 +64,13 @@ class MarkdownRenderer {
         } else if (count < 3) {
           count = 1;
           ParseUtil(Style::CODE);
-        } else if (count == 3) {
-          ParseUtil(Style::CODE);
+        } else if (count == 3 && isFirst) {
+          // ParseUtil(Style::CODEBLOCK);
+          if (lineStyle == Style::CODEBLOCK)
+            lineStyle = Style::NONE;
+          else
+            lineStyle = Style::CODEBLOCK;
+          updateBegin = true;
         }
       } else if (*it == '_') {
         count = lookAhead(line, '_');
@@ -83,7 +90,7 @@ class MarkdownRenderer {
         if (followsWhiteSpace) {
           lineStyle = (Style)count;
           pos = std::distance(begin, it);
-          bffrline.replace(pos, count + 1, "");  // +1 for the WhiteSpace
+          bffrline.replace(pos, count + 1, ""); // +1 for the WhiteSpace
           isFirst = false;
           continue;
         }
@@ -110,8 +117,8 @@ class MarkdownRenderer {
 
     for (auto it = parsed.begin(); it != parsed.end(); ++it) {
       std::cout << it->first << "\t\t:\t\t";
-      Styles& styles = it->second;
-      for (auto& style : styles) {
+      Styles &styles = it->second;
+      for (auto &style : styles) {
         std::cout << style << "\t";
       }
       std::cout << lineStyleStr.str() << "\n";
@@ -122,8 +129,8 @@ class MarkdownRenderer {
     auto container = Container::Horizontal({});
     for (auto it = parsed.begin(); it != parsed.end(); ++it) {
       auto item = text(it->first);
-      Styles& styles = it->second;
-      for (auto& style : styles) {
+      Styles &styles = it->second;
+      for (auto &style : styles) {
         item |= MarkdownRenderer::decorator[style];
       }
       container->Add(Renderer([=] { return item; }));
@@ -145,8 +152,8 @@ class MarkdownRenderer {
     style = {}, parsed = {};
   }
 
- private:
-  int lookAhead(const std::string& line, char&& c) {
+private:
+  int lookAhead(const std::string &line, char &&c) {
     int count = 1;
     while ((it + count) != line.end() && *(it + count) == c) {
       count++;
@@ -155,7 +162,7 @@ class MarkdownRenderer {
     return count;
   }
 
-  void ParseUtil(const Style& parsedStyle) {
+  void ParseUtil(const Style &parsedStyle) {
     updateBegin = true;
     PushText();
     if (ToPush(parsedStyle)) {
@@ -172,7 +179,7 @@ class MarkdownRenderer {
     }
   }
 
-  bool ToPush(const Style& s) {
+  bool ToPush(const Style &s) {
     if (style.empty())
       return true;
     return (style.back() != s);
@@ -191,6 +198,8 @@ class MarkdownRenderer {
   inline static void populateMap() {
     MarkdownRenderer::decorator[Style::BOLD] = bold;
     MarkdownRenderer::decorator[Style::CODE] = inverted;
+    MarkdownRenderer::decorator[Style::CODEBLOCK] =
+        bgcolor(Color::RGB(30, 31, 30));
     MarkdownRenderer::decorator[Style::ITALIC] = dim;
     MarkdownRenderer::decorator[Style::H1] = bgcolor(Color::Red3);
     MarkdownRenderer::decorator[Style::H2] = bgcolor(Color::Green3);
@@ -226,12 +235,13 @@ int main() {
   lines.push_back("#### Heading 4");
   lines.push_back("##### Heading 5");
   lines.push_back("###### Heading 6");
+  // lines.push_back("```this is nothgin```"); // Not supported ?
 
   auto container = Container::Vertical({});
-  for (auto& line : lines) {
+  for (auto &line : lines) {
     std::cout << line << "\n";
   }
-  for (auto& line : lines) {
+  for (auto &line : lines) {
     m.Parse(line);
     container->Add(std::move(m.getComponent()));
     m.Debug();
