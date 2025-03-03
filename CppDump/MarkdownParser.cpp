@@ -1,6 +1,7 @@
 #include "ftxui/component/component.hpp"
 #include "ftxui/component/screen_interactive.hpp"
 
+#include <algorithm>
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/color.hpp>
 #include <iostream>
@@ -30,10 +31,10 @@ enum Style {
 typedef std::vector<Style> Styles;
 
 class MarkdownRenderer {
-public:
+ public:
   MarkdownRenderer() { MarkdownRenderer::populateMap(); };
 
-  void Parse(const std::string &line) {
+  void Parse(const std::string& line) {
     lineStyle =
         (lineStyle != Style::CODEBLOCK) ? Style::NONE : Style::CODEBLOCK;
     parsed = {};
@@ -53,29 +54,43 @@ public:
             isFirst = false;
             continue;
           }
-          ParseUtil(Style::ITALIC);
+          count = 1;
+          ParseUtil(Style::ITALIC, "*");
         } else if (count == 2) {
-          ParseUtil(Style::BOLD);
+          ParseUtil(Style::BOLD, "**");
+        } else {
+          if (!style.empty()) {
+            if (style.back() == Style::ITALIC) {
+              count = 1;
+              ParseUtil(Style::ITALIC, "*");
+            } else if (style.back() == Style::BOLD) {
+              count = 2;
+              ParseUtil(Style::BOLD, "**");
+            }
+          } else {
+            count = 1;
+            ParseUtil(Style::ITALIC, "*");
+          }
         }
       } else if (*it == '`') {
         count = lookAhead(line, '`');
         if (count == 1) {
-          ParseUtil(Style::CODE);
+          ParseUtil(Style::CODE, "`");
         } else if (count < 3) {
           count = 1;
-          ParseUtil(Style::CODE);
+          ParseUtil(Style::CODE, "`");
         } else if (count == 3 && isFirst) {
           // ParseUtil(Style::CODEBLOCK);
           if (lineStyle == Style::CODEBLOCK)
             lineStyle = Style::NONE;
           else
-            lineStyle = Style::CODEBLOCK;
+            lineStyle = Style::CODEBLOCK, renderBlank = true;
           updateBegin = true;
         }
       } else if (*it == '_') {
         count = lookAhead(line, '_');
         if (count == 1) {
-          ParseUtil(Style::ITALIC);
+          ParseUtil(Style::ITALIC, "_");
         }
       } else if (*it == '-') {
         count = lookAhead(line, '-');
@@ -90,7 +105,7 @@ public:
         if (followsWhiteSpace) {
           lineStyle = (Style)count;
           pos = std::distance(begin, it);
-          bffrline.replace(pos, count + 1, ""); // +1 for the WhiteSpace
+          bffrline.replace(pos, count + 1, "");  // +1 for the WhiteSpace
           isFirst = false;
           continue;
         }
@@ -107,6 +122,7 @@ public:
       }
     }
     PushText();
+    corrections();
   }
 
   void Debug() {
@@ -117,8 +133,8 @@ public:
 
     for (auto it = parsed.begin(); it != parsed.end(); ++it) {
       std::cout << it->first << "\t\t:\t\t";
-      Styles &styles = it->second;
-      for (auto &style : styles) {
+      Styles& styles = it->second;
+      for (auto& style : styles) {
         std::cout << style << "\t";
       }
       std::cout << lineStyleStr.str() << "\n";
@@ -127,16 +143,20 @@ public:
 
   Component getComponent() {
     auto container = Container::Horizontal({});
+    if (parsed.empty()) {
+      container->Add(Renderer([] { return text(""); }));
+    }
+    if (renderBlank) {
+      renderBlank = false;
+      return container;
+    }
     for (auto it = parsed.begin(); it != parsed.end(); ++it) {
       auto item = text(it->first);
-      Styles &styles = it->second;
-      for (auto &style : styles) {
+      Styles& styles = it->second;
+      for (auto& style : styles) {
         item |= MarkdownRenderer::decorator[style];
       }
       container->Add(Renderer([=] { return item; }));
-    }
-    if (parsed.empty()) {
-      container->Add(Renderer([] { return text(""); }));
     }
     if (lineStyle != Style::NONE) {
       container |= MarkdownRenderer::decorator[lineStyle];
@@ -152,8 +172,26 @@ public:
     style = {}, parsed = {};
   }
 
-private:
-  int lookAhead(const std::string &line, char &&c) {
+ private:
+  void corrections() {
+    while (!style.empty()) {
+      std::string marker = style_metadata.back().first;
+      int pos = style_metadata.back().second;
+      for (pos; pos < parsed.size(); pos++) {  // NOLINT
+        auto& data = parsed[pos];
+        if (pos == style_metadata.back().second)
+          data.first = marker + data.first;
+        auto style_it =
+            std::find(data.second.begin(), data.second.end(), style.back());
+        if (style_it != data.second.end())
+          data.second.erase(style_it);
+      }
+      style.pop_back();
+      style_metadata.pop_back();
+    }
+  }
+
+  int lookAhead(const std::string& line, char&& c) {
     int count = 1;
     while ((it + count) != line.end() && *(it + count) == c) {
       count++;
@@ -162,13 +200,15 @@ private:
     return count;
   }
 
-  void ParseUtil(const Style &parsedStyle) {
+  void ParseUtil(const Style& parsedStyle, const std::string& marker) {
     updateBegin = true;
     PushText();
-    if (ToPush(parsedStyle)) {
+    if (ToPush(parsedStyle, marker)) {
       style.push_back(parsedStyle);
+      style_metadata.push_back({marker, parsed.size()});
     } else {
       style.pop_back();
+      style_metadata.pop_back();
     }
   }
 
@@ -179,21 +219,24 @@ private:
     }
   }
 
-  bool ToPush(const Style &s) {
+  bool ToPush(const Style& s, const std::string& marker) {
     if (style.empty())
       return true;
-    return (style.back() != s);
+    return (style.back() != s || style_metadata.back().first != marker);
   }
 
   std::string::const_iterator begin, it;
   bool updateBegin = false;
   bool followsWhiteSpace = false;
+  bool renderBlank = false;
   std::string bffrline;
 
   Styles style = {};
   Style lineStyle = Style::NONE;
   std::vector<std::pair<std::string, Styles>> parsed = {};
+  std::vector<std::pair<std::string, unsigned int>> style_metadata;
 
+  inline static std::unordered_map<Style, std::string> marker;
   inline static std::unordered_map<Style, Decorator> decorator;
   inline static void populateMap() {
     MarkdownRenderer::decorator[Style::BOLD] = bold;
@@ -218,6 +261,9 @@ int main() {
       "Clas**sic: `The work`** is `mysterious` & **`important`** Works?");
   lines.push_back("*italic* & _italic_ # no heading");
   lines.push_back("This ``should be ``invisible");
+  lines.push_back("is this ***bold & italic?***");
+  lines.push_back("this sentence **does not****make any sense");
+  lines.push_back("crazy *init? _ibet `it is");
   lines.push_back("```");
   lines.push_back("#include <unistd.h>");
   lines.push_back("");
@@ -228,20 +274,20 @@ int main() {
   lines.push_back("* this is a point!");
   lines.push_back("- this is also a point!");
   lines.push_back("but - this is not a point!");
-  lines.push_back("and * neither this *");
+  lines.push_back("and * neither this ");
   lines.push_back("# Heading 1 **on fuego**");
   lines.push_back("## Heading 2 `this is inverted lol`");
   lines.push_back("### Heading 3");
   lines.push_back("#### Heading 4");
   lines.push_back("##### Heading 5");
   lines.push_back("###### Heading 6");
-  // lines.push_back("```this is nothgin```"); // Not supported ?
+  lines.push_back("```this is nothgin```");  // Not supported ?
 
   auto container = Container::Vertical({});
-  for (auto &line : lines) {
+  for (auto& line : lines) {
     std::cout << line << "\n";
   }
-  for (auto &line : lines) {
+  for (auto& line : lines) {
     m.Parse(line);
     container->Add(std::move(m.getComponent()));
     m.Debug();
