@@ -24,17 +24,18 @@ enum Style {
   H5 = 5,
   H6 = 6,
   BOLD,
+  ITALIC,
+  BOLD_ITALIC,
   CODE,
   CODEBLOCK,
-  ITALIC,
 };
 typedef std::vector<Style> Styles;
 
 class MarkdownRenderer {
- public:
+public:
   MarkdownRenderer() { MarkdownRenderer::populateMap(); };
 
-  void Parse(const std::string& line) {
+  void Parse(const std::string &line) {
     lineStyle =
         (lineStyle != Style::CODEBLOCK) ? Style::NONE : Style::CODEBLOCK;
     parsed = {};
@@ -54,21 +55,25 @@ class MarkdownRenderer {
             isFirst = false;
             continue;
           }
-          count = 1;
           ParseUtil(Style::ITALIC, "*");
         } else if (count == 2) {
           ParseUtil(Style::BOLD, "**");
+        } else if (count == 3) {
+          ParseUtil(Style::BOLD_ITALIC, "***");
         } else {
+          count = 1;
           if (!style.empty()) {
-            if (style.back() == Style::ITALIC) {
-              count = 1;
-              ParseUtil(Style::ITALIC, "*");
-            } else if (style.back() == Style::BOLD) {
-              count = 2;
+            if (style.back() == Style::BOLD) {
+              count++;
               ParseUtil(Style::BOLD, "**");
+            } else if (style.back() == Style::BOLD_ITALIC) {
+              count += 2;
+              std::cout << "what??\n\n";
+              ParseUtil(Style::BOLD_ITALIC, "***");
+            } else {
+              ParseUtil(Style::ITALIC, "*");
             }
           } else {
-            count = 1;
             ParseUtil(Style::ITALIC, "*");
           }
         }
@@ -91,6 +96,10 @@ class MarkdownRenderer {
         count = lookAhead(line, '_');
         if (count == 1) {
           ParseUtil(Style::ITALIC, "_");
+        } else if (count == 2) {
+          ParseUtil(Style::BOLD, "__");
+        } else if (count == 3) {
+          ParseUtil(Style::BOLD_ITALIC, "___");
         }
       } else if (*it == '-') {
         count = lookAhead(line, '-');
@@ -105,7 +114,7 @@ class MarkdownRenderer {
         if (followsWhiteSpace) {
           lineStyle = (Style)count;
           pos = std::distance(begin, it);
-          bffrline.replace(pos, count + 1, "");  // +1 for the WhiteSpace
+          bffrline.replace(pos, count + 1, ""); // +1 for the WhiteSpace
           isFirst = false;
           continue;
         }
@@ -122,7 +131,7 @@ class MarkdownRenderer {
       }
     }
     PushText();
-    corrections();
+    FormatCorrections();
   }
 
   void Debug() {
@@ -133,8 +142,8 @@ class MarkdownRenderer {
 
     for (auto it = parsed.begin(); it != parsed.end(); ++it) {
       std::cout << it->first << "\t\t:\t\t";
-      Styles& styles = it->second;
-      for (auto& style : styles) {
+      Styles &styles = it->second;
+      for (auto &style : styles) {
         std::cout << style << "\t";
       }
       std::cout << lineStyleStr.str() << "\n";
@@ -152,8 +161,13 @@ class MarkdownRenderer {
     }
     for (auto it = parsed.begin(); it != parsed.end(); ++it) {
       auto item = text(it->first);
-      Styles& styles = it->second;
-      for (auto& style : styles) {
+      Styles &styles = it->second;
+      for (auto &style : styles) {
+        if (style == Style::BOLD_ITALIC) {
+          item |= bold;
+          item |= dim;
+          continue;
+        }
         item |= MarkdownRenderer::decorator[style];
       }
       container->Add(Renderer([=] { return item; }));
@@ -172,13 +186,13 @@ class MarkdownRenderer {
     style = {}, parsed = {};
   }
 
- private:
-  void corrections() {
+private:
+  void FormatCorrections() {
     while (!style.empty()) {
       std::string marker = style_metadata.back().first;
       int pos = style_metadata.back().second;
-      for (pos; pos < parsed.size(); pos++) {  // NOLINT
-        auto& data = parsed[pos];
+      for (pos; pos < parsed.size(); pos++) { // NOLINT
+        auto &data = parsed[pos];
         if (pos == style_metadata.back().second)
           data.first = marker + data.first;
         auto style_it =
@@ -191,7 +205,7 @@ class MarkdownRenderer {
     }
   }
 
-  int lookAhead(const std::string& line, char&& c) {
+  int lookAhead(const std::string &line, char &&c) {
     int count = 1;
     while ((it + count) != line.end() && *(it + count) == c) {
       count++;
@@ -200,15 +214,33 @@ class MarkdownRenderer {
     return count;
   }
 
-  void ParseUtil(const Style& parsedStyle, const std::string& marker) {
+  void ParseUtil(const Style &parsedStyle, const std::string &marker) {
     updateBegin = true;
     PushText();
     if (ToPush(parsedStyle, marker)) {
       style.push_back(parsedStyle);
       style_metadata.push_back({marker, parsed.size()});
     } else {
+      if (style.back() == Style::BOLD_ITALIC) {
+        return handleB_T(parsedStyle, marker);
+      }
       style.pop_back();
       style_metadata.pop_back();
+    }
+  }
+
+  void handleB_T(const Style &parsedStyle, const std::string &marker) {
+    style.pop_back();
+    style_metadata.pop_back();
+
+    if (parsedStyle == Style::ITALIC) {
+      style.push_back(Style::BOLD);
+      std::stringstream m;
+      m << marker.substr(0, 1) << marker.substr(0, 1);
+      style_metadata.push_back({m.str(), parsed.size()});
+    } else if (parsedStyle == Style::BOLD) {
+      style.push_back(Style::ITALIC);
+      style_metadata.push_back({marker.substr(0, 1), parsed.size()});
     }
   }
 
@@ -219,9 +251,13 @@ class MarkdownRenderer {
     }
   }
 
-  bool ToPush(const Style& s, const std::string& marker) {
+  bool ToPush(const Style &s, const std::string &marker) {
     if (style.empty())
       return true;
+    if (style.back() == Style::BOLD_ITALIC &&style_metadata.back().first == marker) {
+      return (s != Style::BOLD && s != Style::ITALIC &&
+              s != Style::BOLD_ITALIC);
+    }
     return (style.back() != s || style_metadata.back().first != marker);
   }
 
@@ -239,6 +275,7 @@ class MarkdownRenderer {
   inline static std::unordered_map<Style, std::string> marker;
   inline static std::unordered_map<Style, Decorator> decorator;
   inline static void populateMap() {
+    MarkdownRenderer::decorator[Style::BOLD_ITALIC] = bold;
     MarkdownRenderer::decorator[Style::BOLD] = bold;
     MarkdownRenderer::decorator[Style::CODE] = inverted;
     MarkdownRenderer::decorator[Style::CODEBLOCK] =
@@ -263,7 +300,11 @@ int main() {
   lines.push_back("This ``should be ``invisible");
   lines.push_back("is this ***bold & italic?***");
   lines.push_back("this sentence **does not****make any sense");
-  lines.push_back("crazy *init? _ibet `it is");
+  lines.push_back("crazy *init? _ibet `it is *italic **bold** *");
+  lines.push_back("this is ***my sentence****with undisclosed business");
+  lines.push_back("this is ***my sen*tence****with undisclosed business");
+  lines.push_back("this is ***my sen**tence****with undisclosed business");
+  lines.push_back("Does ***this __ should not_ work");
   lines.push_back("```");
   lines.push_back("#include <unistd.h>");
   lines.push_back("");
@@ -281,13 +322,13 @@ int main() {
   lines.push_back("#### Heading 4");
   lines.push_back("##### Heading 5");
   lines.push_back("###### Heading 6");
-  lines.push_back("```this is nothgin```");  // Not supported ?
+  lines.push_back("```this is nothgin```"); // Not supported ?
 
   auto container = Container::Vertical({});
-  for (auto& line : lines) {
+  for (auto &line : lines) {
     std::cout << line << "\n";
   }
-  for (auto& line : lines) {
+  for (auto &line : lines) {
     m.Parse(line);
     container->Add(std::move(m.getComponent()));
     m.Debug();
