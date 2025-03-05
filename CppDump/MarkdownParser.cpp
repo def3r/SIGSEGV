@@ -32,10 +32,10 @@ enum Style {
 typedef std::vector<Style> Styles;
 
 class MarkdownRenderer {
-public:
+ public:
   MarkdownRenderer() { MarkdownRenderer::populateMap(); };
 
-  void Parse(const std::string &line) {
+  void Parse(const std::string& line) {
     lineStyle =
         (lineStyle != Style::CODEBLOCK) ? Style::NONE : Style::CODEBLOCK;
     parsed = {};
@@ -68,13 +68,10 @@ public:
               ParseUtil(Style::BOLD, "**");
             } else if (style.back() == Style::BOLD_ITALIC) {
               count += 2;
-              std::cout << "what??\n\n";
               ParseUtil(Style::BOLD_ITALIC, "***");
-            } else {
+            } else if (style.back() == Style::ITALIC) {
               ParseUtil(Style::ITALIC, "*");
             }
-          } else {
-            ParseUtil(Style::ITALIC, "*");
           }
         }
       } else if (*it == '`') {
@@ -114,7 +111,7 @@ public:
         if (followsWhiteSpace) {
           lineStyle = (Style)count;
           pos = std::distance(begin, it);
-          bffrline.replace(pos, count + 1, ""); // +1 for the WhiteSpace
+          bffrline.replace(pos, count + 1, "");  // +1 for the WhiteSpace
           isFirst = false;
           continue;
         }
@@ -142,8 +139,8 @@ public:
 
     for (auto it = parsed.begin(); it != parsed.end(); ++it) {
       std::cout << it->first << "\t\t:\t\t";
-      Styles &styles = it->second;
-      for (auto &style : styles) {
+      Styles& styles = it->second;
+      for (auto& style : styles) {
         std::cout << style << "\t";
       }
       std::cout << lineStyleStr.str() << "\n";
@@ -161,8 +158,8 @@ public:
     }
     for (auto it = parsed.begin(); it != parsed.end(); ++it) {
       auto item = text(it->first);
-      Styles &styles = it->second;
-      for (auto &style : styles) {
+      Styles& styles = it->second;
+      for (auto& style : styles) {
         if (style == Style::BOLD_ITALIC) {
           item |= bold;
           item |= dim;
@@ -186,13 +183,13 @@ public:
     style = {}, parsed = {};
   }
 
-private:
+ private:
   void FormatCorrections() {
     while (!style.empty()) {
       std::string marker = style_metadata.back().first;
       int pos = style_metadata.back().second;
-      for (pos; pos < parsed.size(); pos++) { // NOLINT
-        auto &data = parsed[pos];
+      for (pos; pos < parsed.size(); pos++) {  // NOLINT
+        auto& data = parsed[pos];
         if (pos == style_metadata.back().second)
           data.first = marker + data.first;
         auto style_it =
@@ -205,7 +202,7 @@ private:
     }
   }
 
-  int lookAhead(const std::string &line, char &&c) {
+  int lookAhead(const std::string& line, char&& c) {
     int count = 1;
     while ((it + count) != line.end() && *(it + count) == c) {
       count++;
@@ -214,7 +211,7 @@ private:
     return count;
   }
 
-  void ParseUtil(const Style &parsedStyle, const std::string &marker) {
+  void ParseUtil(const Style& parsedStyle, const std::string& marker) {
     updateBegin = true;
     PushText();
     if (ToPush(parsedStyle, marker)) {
@@ -222,22 +219,23 @@ private:
       style_metadata.push_back({marker, parsed.size()});
     } else {
       if (style.back() == Style::BOLD_ITALIC) {
-        return handleB_T(parsedStyle, marker);
+        return handleBIt(parsedStyle, marker);
       }
       style.pop_back();
       style_metadata.pop_back();
     }
   }
 
-  void handleB_T(const Style &parsedStyle, const std::string &marker) {
+  void handleBIt(const Style& parsedStyle, const std::string& marker) {
     style.pop_back();
+    auto data = style_metadata.back();
     style_metadata.pop_back();
 
     if (parsedStyle == Style::ITALIC) {
       style.push_back(Style::BOLD);
       std::stringstream m;
       m << marker.substr(0, 1) << marker.substr(0, 1);
-      style_metadata.push_back({m.str(), parsed.size()});
+      style_metadata.push_back({m.str(), parsed.size() - 1});
     } else if (parsedStyle == Style::BOLD) {
       style.push_back(Style::ITALIC);
       style_metadata.push_back({marker.substr(0, 1), parsed.size()});
@@ -251,10 +249,11 @@ private:
     }
   }
 
-  bool ToPush(const Style &s, const std::string &marker) {
+  bool ToPush(const Style& s, const std::string& marker) {
     if (style.empty())
       return true;
-    if (style.back() == Style::BOLD_ITALIC &&style_metadata.back().first == marker) {
+    if (style.back() == Style::BOLD_ITALIC &&
+        style_metadata.back().first[0] == marker[0]) {
       return (s != Style::BOLD && s != Style::ITALIC &&
               s != Style::BOLD_ITALIC);
     }
@@ -301,10 +300,11 @@ int main() {
   lines.push_back("is this ***bold & italic?***");
   lines.push_back("this sentence **does not****make any sense");
   lines.push_back("crazy *init? _ibet `it is *italic **bold** *");
-  lines.push_back("this is ***my sentence****with undisclosed business");
-  lines.push_back("this is ***my sen*tence****with undisclosed business");
-  lines.push_back("this is ***my sen**tence****with undisclosed business");
-  lines.push_back("Does ***this __ should not_ work");
+  lines.push_back("this is ***my sentence**** `with undisclosed` business");
+  lines.push_back("this is ***my sen*tence**** with undisclosed business");
+  lines.push_back("this is ***my sen**tence**** with undisclosed business");
+  lines.push_back("Does ***this* _should not_ work");
+  lines.push_back("********");
   lines.push_back("```");
   lines.push_back("#include <unistd.h>");
   lines.push_back("");
@@ -314,6 +314,7 @@ int main() {
   lines.push_back("```");
   lines.push_back("* this is a point!");
   lines.push_back("- this is also a point!");
+  lines.push_back("- this is also a point!");
   lines.push_back("but - this is not a point!");
   lines.push_back("and * neither this ");
   lines.push_back("# Heading 1 **on fuego**");
@@ -322,13 +323,13 @@ int main() {
   lines.push_back("#### Heading 4");
   lines.push_back("##### Heading 5");
   lines.push_back("###### Heading 6");
-  lines.push_back("```this is nothgin```"); // Not supported ?
+  lines.push_back("```this is nothgin```");  // Not supported ?
 
   auto container = Container::Vertical({});
-  for (auto &line : lines) {
+  for (auto& line : lines) {
     std::cout << line << "\n";
   }
-  for (auto &line : lines) {
+  for (auto& line : lines) {
     m.Parse(line);
     container->Add(std::move(m.getComponent()));
     m.Debug();
