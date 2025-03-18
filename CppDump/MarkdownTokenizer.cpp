@@ -1,6 +1,8 @@
+#include <cmath>
 #include <deque>
 #include <iostream>
 #include <sstream>
+#include <stack>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -65,6 +67,18 @@ class Tokenizer {
           TokenUtil(TokenType::NONE, StrCreat("*", count));
         }
       }
+      if (*it == '_') {
+        count = lookAhead(line, '_');
+        if (count == 1) {
+          TokenUtil(TokenType::ITALIC, "_");
+        } else if (count == 2) {
+          TokenUtil(TokenType::BOLD, "__");
+        } else if (count == 3) {
+          TokenUtil(TokenType::BOLD_ITALIC, "___");
+        } else {
+          TokenUtil(TokenType::NONE, StrCreat("_", count));
+        }
+      }
 
       if (updateBegin) {
         begin = it + count;
@@ -102,6 +116,9 @@ class Tokenizer {
     Tokenizer::markerMap["*"] = TokenType::ITALIC;
     Tokenizer::markerMap["**"] = TokenType::BOLD;
     Tokenizer::markerMap["***"] = TokenType::BOLD_ITALIC;
+    Tokenizer::markerMap["_"] = TokenType::ITALIC;
+    Tokenizer::markerMap["__"] = TokenType::BOLD;
+    Tokenizer::markerMap["___"] = TokenType::BOLD_ITALIC;
   }
 
   std::string StrCreat(const std::string& s, int n) {
@@ -119,7 +136,118 @@ class Tokenizer {
   }
 
   bool ToPop(const Token& token) {
+    std::cout << syntaxStack.front().marker << " : " << token.second << "\n";
     return (!syntaxStack.empty() && syntaxStack.front().marker == token.second);
+  }
+
+  int FormatCorrections(std::deque<Stack> syntaxStack, int correction = 0) {
+    std::deque<Stack> backupStack;
+    while (!syntaxStack.empty() && syntaxStack.size() >= 2) {
+      backupStack.clear();
+      Stack TOS = syntaxStack.back();
+      syntaxStack.pop_back();
+
+      Stack TOSm1 = syntaxStack.back();
+      syntaxStack.pop_back();
+      if (TOS.marker[0] != TOSm1.marker[0]) {
+        while (syntaxStack.size() >= 1 && TOS.marker[0] != TOSm1.marker[0]) {
+          std::cout << TOS.marker << TOSm1.marker << "\n";
+          backupStack.push_back(TOSm1);
+          std::cout << "PUSHED: " << TOSm1.marker << "\n";
+          TOSm1 = syntaxStack.back();
+          syntaxStack.pop_back();
+        }
+        if (syntaxStack.size() == 0 && TOS.marker[0] != TOSm1.marker[0]) {
+          syntaxStack.push_back(TOSm1);
+          syntaxStack.push_back(TOS);
+          break;
+        }
+        std::cout << "Broken!!\n";
+      }
+
+      if (TOS.marker.length() == TOSm1.marker.length()) {
+        if (!TOS.toErase) {
+          tokens.insert(tokens.begin() + TOS.index + correction++,
+                        {Tokenizer::markerMap[TOS.marker], TOS.marker});
+        }
+        if (backupStack.size() > 0) {
+          correction = FormatCorrections(backupStack, correction);
+          // while (!backupStack.empty()) {
+          //   tokens.insert(
+          //       tokens.begin() + backupStack.back().index + ++correction,
+          //       {TokenType::TEXT, backupStack.back().marker});
+          //   if (backupStack.back().toErase) {
+          //     tokens.erase(tokens.begin() + backupStack.back().index +
+          //                  --correction);
+          //   }
+          //   backupStack.pop_back();
+          // }
+        }
+      } else if (TOS.marker.length() > TOSm1.marker.length()) {
+        TOS.marker =
+            TOS.marker.substr(0, TOS.marker.length() - TOSm1.marker.length());
+        syntaxStack.push_back(std::move(TOS));
+
+        if (syntaxStack.back().toErase) {
+          tokens.erase(tokens.begin() + syntaxStack.back().index +
+                       correction--);
+          syntaxStack.back().toErase = false;
+        }
+        tokens.insert(tokens.begin() + syntaxStack.back().index + ++correction,
+                      {Tokenizer::markerMap[TOSm1.marker], TOSm1.marker});
+        if (backupStack.size() > 0) {
+          correction = FormatCorrections(backupStack, correction);
+          // while (!backupStack.empty()) {
+          //   tokens.insert(
+          //       tokens.begin() + backupStack.back().index + ++correction,
+          //       {TokenType::TEXT, backupStack.back().marker});
+          //   if (backupStack.back().toErase) {
+          //     tokens.erase(tokens.begin() + backupStack.back().index +
+          //                  --correction);
+          //   }
+          //   backupStack.pop_back();
+          // }
+        }
+      } else {
+        TOSm1.marker =
+            TOSm1.marker.substr(0, TOSm1.marker.length() - TOS.marker.length());
+        syntaxStack.push_back(std::move(TOSm1));
+
+        if (!TOS.toErase) {
+          tokens.insert(tokens.begin() + TOS.index + correction++,
+                        {Tokenizer::markerMap[TOS.marker], TOS.marker});
+        }
+        if (syntaxStack.back().toErase) {
+          tokens.erase(tokens.begin() + syntaxStack.back().index +
+                       correction--);
+          syntaxStack.back().toErase = false;
+        }
+        tokens.insert(tokens.begin() + syntaxStack.back().index + ++correction,
+                      {Tokenizer::markerMap[TOS.marker], TOS.marker});
+        if (backupStack.size() > 0) {
+          correction = FormatCorrections(backupStack, correction);
+          // while (!backupStack.empty()) {
+          //   tokens.insert(
+          //       tokens.begin() + backupStack.back().index + ++correction,
+          //       {TokenType::TEXT, backupStack.back().marker});
+          //   if (backupStack.back().toErase) {
+          //     tokens.erase(tokens.begin() + backupStack.back().index +
+          //                  --correction);
+          //   }
+          //   backupStack.pop_back();
+          // }
+        }
+      }
+    }
+    while (!syntaxStack.empty()) {
+      tokens.insert(tokens.begin() + syntaxStack.back().index + ++correction,
+                    {TokenType::TEXT, syntaxStack.back().marker});
+      if (syntaxStack.back().toErase) {
+        tokens.erase(tokens.begin() + syntaxStack.back().index + --correction);
+      }
+      syntaxStack.pop_back();
+    }
+    return correction;
   }
 
   void FormatCorrections() {
@@ -141,59 +269,7 @@ class Tokenizer {
       return;
     }
 
-    int total = 0;
-    int correction = 0;
-    while (!syntaxStack.empty() && syntaxStack.size() >= 2) {
-      Stack TOS = syntaxStack.back();
-      syntaxStack.pop_back();
-
-      Stack TOSm1 = syntaxStack.back();
-      syntaxStack.pop_back();
-      if (TOS.marker[0] != TOSm1.marker[0]) {
-        continue;
-      }
-
-      if (TOS.marker.length() == TOSm1.marker.length()) {
-        tokens.insert(tokens.begin() + TOS.index + ++correction,
-                      {Tokenizer::markerMap[TOS.marker], TOS.marker});
-      } else if (TOS.marker.length() > TOSm1.marker.length()) {
-        TOS.marker =
-            TOS.marker.substr(0, TOS.marker.length() - TOSm1.marker.length());
-        syntaxStack.push_back(std::move(TOS));
-
-        if (syntaxStack.back().toErase) {
-          tokens.erase(tokens.begin() + syntaxStack.back().index +
-                       correction--);
-          syntaxStack.back().toErase = false;
-        }
-        tokens.insert(tokens.begin() + syntaxStack.back().index + ++correction,
-                      {Tokenizer::markerMap[TOSm1.marker], TOSm1.marker});
-      } else {
-        TOSm1.marker =
-            TOSm1.marker.substr(0, TOSm1.marker.length() - TOS.marker.length());
-        syntaxStack.push_back(std::move(TOSm1));
-
-        if (!TOS.toErase) {
-          tokens.insert(tokens.begin() + TOS.index + correction++,
-                        {Tokenizer::markerMap[TOS.marker], TOS.marker});
-        }
-        if (syntaxStack.back().toErase) {
-          tokens.erase(tokens.begin() + syntaxStack.back().index +
-                       correction--);
-          syntaxStack.back().toErase = false;
-        }
-        tokens.insert(tokens.begin() + syntaxStack.back().index + ++correction,
-                      {Tokenizer::markerMap[TOS.marker], TOS.marker});
-      }
-    }
-    while (!syntaxStack.empty()) {
-      tokens.insert(tokens.begin() + syntaxStack.back().index + ++correction,
-                    {TokenType::TEXT, syntaxStack.back().marker});
-      if (syntaxStack.back().toErase) {
-        tokens.erase(tokens.begin() + syntaxStack.back().index + --correction);
-      }
-      syntaxStack.pop_back();
-    }
+    FormatCorrections(syntaxStack);
   }
 
   void PushText() {
@@ -226,13 +302,18 @@ int main() {
   // t.tokenizer("this *****ain't nothin*** this is cruel **\n");
   // t.tokenizer("this *is the *****ain't nothin** this is cruel **\n");
   // t.tokenizer("***So **it *works?* huh...**mornin*");
-  t.tokenizer("**how***bout*zis? where this text?");
+  // t.tokenizer("**how***bout*zis? where this text?");
+  // t.tokenizer("**this should be**** entirely bold**");
+  // t.tokenizer("__this should be____entirely bold__");
+  t.tokenizer("__this *should__ be** entirely bold__");
+  // t.tokenizer("__this *should be** entirely bold__");
 
   /* S T A C K
    *
+   *
    * **
-   * ***
-   * *
+   * **
+   *
    *
    */
   t.debug();
