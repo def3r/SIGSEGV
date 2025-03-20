@@ -1,8 +1,11 @@
 #include <cmath>
 #include <cstddef>
 #include <iostream>
+#include <mutex>
+#include <ostream>
 #include <queue>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -28,80 +31,132 @@ typedef struct Process {
 } Process;
 typedef std::vector<Process> Processes;
 
-class Processor {
+class Device {
  public:
-  Processor() {}
+  size_t MAX_TICKS = 500;
+  Device() : readyQ(cmp), ioQ(cmp) {}
   void init(Processes& procs) {
-    freshProcs = procs;
+    this->procs = procs;
     totalProc = procs.size();
   }
-  void compute() {
-    while (completeProcs.size() != totalProc) {
+
+  void start() {
+    working = true;
+    std::thread cpu(&Device::processor, this);
+    std::thread io(&Device::ioDevice, this);
+    cpu.join();
+    io.join();
+  }
+
+  void processor() {
+    Process execProc;
+    size_t lastIOBurst = 0;
+    while (ticksCPU <= 500) {
       int index = 0;
-      for (const auto& proc : freshProcs) {
-        if (proc.arrivalTime == tick) {
-          readyQueue.push(proc);
-          freshProcs.erase(freshProcs.begin() + index);
+      for (const auto& proc : procs) {
+        if (proc.arrivalTime == ticksCPU) {
+          std::cout << "Process Arrived:\t\t" << proc.procName << "\t\t@tick "
+                    << ticksCPU << "\n";
+          mtx.lock();
+          readyQ.push(proc);
+          mtx.unlock();
+          procs.erase(procs.begin() + index);
           continue;
         }
         index++;
       }
 
-      if (!processorOccupied && !readyQueue.empty()) {
-        execProc = readyQueue.front();
-        std::cout << "Scheduled Process: " << execProc.procName << " @tick "
-                  << tick << "\n";
-        readyQueue.pop();
-        processorOccupied = true;
-        burst = &execProc.burstTimeCPU;
-        burstType = BurstType::CPU;
-        execProcIOBurst = execProc.burstTimeIO;
-        tick++;
+      if (isIdle && !readyQ.empty()) {
+        mtx.lock();
+        execProc = readyQ.top();
+        readyQ.pop();
+        mtx.unlock();
+        std::cout << "Process Scheduled:\t\t" << execProc.procName
+                  << "\t\t@tick " << ticksCPU << "\n";
+        lastIOBurst = 0;
+        isIdle = false;
+        ticksCPU++;
         continue;
       }
 
-      if (processorOccupied) {
-        (*burst)--;
-        if (burstType == BurstType::CPU) {
-          lastIOBurst++;
-        }
-
-        if (*burst <= 0 && burstType == BurstType::CPU) {
-          processorOccupied = false;
-          std::cout << "Completed Process: " << execProc.procName << " @tick "
-                    << tick << "\n";
-          completeProcs.push_back(execProc);
-        } else if (*burst <= 0 && burstType == BurstType::IO) {
-          burst = &execProc.burstTimeCPU;
-          burstType = BurstType::CPU;
-        }
-
-        if (lastIOBurst >= execProc.burstTimeRate) {
-          execProcIOBurst = execProc.burstTimeIO;
-          burst = &execProcIOBurst;
-          burstType = BurstType::IO;
-          lastIOBurst = 0;
+      if (!isIdle) {
+        if (--execProc.burstTimeCPU <= 0) {
+          std::cout << "Process [Completed]:\t\t" << execProc.procName
+                    << "\t\t@tick " << ticksCPU << "\n";
+          isIdle = true;
+        } else if (++lastIOBurst >= execProc.burstTimeRate) {
+          std::cout << "Process Queued for IO:\t\t" << execProc.procName
+                    << "\t\t@tick " << ticksCPU << "\n";
+          mtx.lock();
+          ioQ.push(execProc);
+          mtx.unlock();
+          isIdle = true;
         }
       }
 
-      tick++;
+      ticksCPU++;
+      std::this_thread::yield();
     }
+    mtx.lock();
+    working = false;
+    mtx.unlock();
   }
 
- protected:
-  enum BurstType { NONE, CPU, IO };
+  void ioDevice() {
+    std::cout << "Started\n";
+    Process execProc;
+    size_t ticksIO = 0;
+    size_t countIOBurst = 0;
+    bool isIdle = true;
+    while (working) {
+      if (isIdle && !ioQ.empty()) {
+        mtx.lock();
+        execProc = ioQ.top();
+        ioQ.pop();
+        mtx.unlock();
+        std::cout << "[IO] Scheduled:\t\t" << execProc.procName
+                  << "\t\t@tick-io " << ticksIO << "\n"
+                  << std::flush;
+        countIOBurst = 0;
+        isIdle = false;
+        ticksIO++;
+        continue;
+      }
 
-  size_t tick = 0;
-  size_t lastIOBurst = 0;
-  size_t* burst = nullptr;
-  BurstType burstType = BurstType::NONE;
-  Process execProc;
-  size_t execProcIOBurst = 0;
-  bool processorOccupied = false;
-  std::queue<Process> readyQueue = {};
-  Processes freshProcs = {};
+      if (!isIdle) {
+        if (++countIOBurst >= execProc.burstTimeIO) {
+          std::cout << "[IO] Completed:\t\t" << execProc.procName
+                    << "\t\t@tick-io " << ticksIO << "\n"
+                    << std::flush;
+          mtx.lock();
+          readyQ.push(execProc);
+          mtx.unlock();
+          isIdle = true;
+        }
+      }
+
+      ticksIO++;
+      std::this_thread::yield();
+    }
+    std::cout << "Ended\n";
+  }
+
+ private:
+  Processes procs = {};
   size_t totalProc = 0;
-  Processes completeProcs = {};
+  size_t ticksCPU = 0;
+  size_t ticksIO = 0;
+  bool isIdle = true;
+  bool working = false;
+  std::mutex mtx;
+
+  inline static auto cmp = [](const Process& left, const Process& right) {
+    if (left.burstTimeCPU != right.burstTimeCPU)
+      return left.burstTimeCPU > right.burstTimeCPU;
+    return left.arrivalTime > right.arrivalTime;
+  };
+  std::priority_queue<Process, Processes, decltype(cmp)> readyQ;
+  std::priority_queue<Process, Processes, decltype(cmp)> ioQ;
 };
 
 int main() {
@@ -111,9 +166,9 @@ int main() {
   procs.push_back(Process("P2", 8, 50, 2, 5));
   procs.push_back(Process("P3", 15, 10, 3, 6));
 
-  Processor CPU;
-  CPU.init(procs);
-  CPU.compute();
+  Device d;
+  d.init(procs);
+  d.start();
 
   return 0;
 }
