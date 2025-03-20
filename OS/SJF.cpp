@@ -1,11 +1,9 @@
 #include <cmath>
 #include <cstddef>
 #include <iostream>
-#include <mutex>
 #include <ostream>
 #include <queue>
 #include <string>
-#include <thread>
 #include <utility>
 #include <vector>
 
@@ -40,26 +38,24 @@ class Device {
     totalProc = procs.size();
   }
 
-  void start() {
-    working = true;
-    std::thread cpu(&Device::processor, this);
-    std::thread io(&Device::ioDevice, this);
-    cpu.join();
-    io.join();
-  }
-
   void processor() {
     Process execProc;
     size_t lastIOBurst = 0;
-    while (ticksCPU <= 500) {
+    std::cout << "Time (tick)\tDevice\t\tProcess Served\t\tProcessess" << "\n";
+    while (totalProc) {
+      if (isIdle) {
+        std::cout << ticksCPU << "-" << ticksCPU + 1 << "\t\t" << "CPU"
+                  << "\t\t" << "-" << "\t\t"
+                  << "\n";
+      } else {
+        std::cout << ticksCPU << "-" << ticksCPU + 1;
+      }
       int index = 0;
       for (const auto& proc : procs) {
         if (proc.arrivalTime == ticksCPU) {
-          std::cout << "Process Arrived:\t\t" << proc.procName << "\t\t@tick "
-                    << ticksCPU << "\n";
-          mtx.lock();
+          std::cout << "\t\t" << "CPU" << "\t\t" << proc.procName
+                    << "[Arrive]\t\t" << "\n";
           readyQ.push(proc);
-          mtx.unlock();
           procs.erase(procs.begin() + index);
           continue;
         }
@@ -67,78 +63,70 @@ class Device {
       }
 
       if (isIdle && !readyQ.empty()) {
-        mtx.lock();
         execProc = readyQ.top();
         readyQ.pop();
-        mtx.unlock();
-        std::cout << "Process Scheduled:\t\t" << execProc.procName
-                  << "\t\t@tick " << ticksCPU << "\n";
+        std::cout << "\t\t" << "CPU" << "\t\t" << execProc.procName
+                  << "[Sched]:" << execProc.burstTimeCPU << "\t\t" << "\n";
         lastIOBurst = 0;
         isIdle = false;
-        ticksCPU++;
-        continue;
+        // ticksCPU++;
+        // ioDevice();
+        // std::cout << "\n";
       }
 
       if (!isIdle) {
         if (--execProc.burstTimeCPU <= 0) {
-          std::cout << "Process [Completed]:\t\t" << execProc.procName
-                    << "\t\t@tick " << ticksCPU << "\n";
+          std::cout << "\t\t" << "CPU" << "\t\t" << execProc.procName
+                    << "[Comp]\t\t" << "\n";
           isIdle = true;
+          totalProc--;
+          execProc = {};
         } else if (++lastIOBurst >= execProc.burstTimeRate) {
-          std::cout << "Process Queued for IO:\t\t" << execProc.procName
-                    << "\t\t@tick " << ticksCPU << "\n";
-          mtx.lock();
+          std::cout << "\t\t" << "CPU" << "\t\t" << execProc.procName
+                    << "[Q IO]:" << execProc.burstTimeCPU << "\t\t" << "\n";
           ioQ.push(execProc);
-          mtx.unlock();
           isIdle = true;
+        } else {
+          std::cout << "\t\t" << "CPU"
+                    << "\t\t" << execProc.procName << ":"
+                    << execProc.burstTimeCPU << "\t\t"
+                    << "\n";
         }
       }
 
       ticksCPU++;
-      std::this_thread::yield();
+      ioDevice();
+      std::cout << "\n";
     }
-    mtx.lock();
-    working = false;
-    mtx.unlock();
   }
 
   void ioDevice() {
-    std::cout << "Started\n";
-    Process execProc;
-    size_t ticksIO = 0;
-    size_t countIOBurst = 0;
-    bool isIdle = true;
-    while (working) {
-      if (isIdle && !ioQ.empty()) {
-        mtx.lock();
-        execProc = ioQ.top();
-        ioQ.pop();
-        mtx.unlock();
-        std::cout << "[IO] Scheduled:\t\t" << execProc.procName
-                  << "\t\t@tick-io " << ticksIO << "\n"
-                  << std::flush;
-        countIOBurst = 0;
-        isIdle = false;
-        ticksIO++;
-        continue;
-      }
-
-      if (!isIdle) {
-        if (++countIOBurst >= execProc.burstTimeIO) {
-          std::cout << "[IO] Completed:\t\t" << execProc.procName
-                    << "\t\t@tick-io " << ticksIO << "\n"
-                    << std::flush;
-          mtx.lock();
-          readyQ.push(execProc);
-          mtx.unlock();
-          isIdle = true;
-        }
-      }
-
+    if (isIOIdle && !ioQ.empty()) {
+      execProcIO = ioQ.top();
+      ioQ.pop();
+      std::cout << "\t\t" << "IO" << "\t\t" << execProcIO.procName
+                << "[Sched]:" << countIOBurst << "\t\t" << "\n";
+      countIOBurst = 0;
+      isIOIdle = false;
       ticksIO++;
-      std::this_thread::yield();
+      return;
     }
-    std::cout << "Ended\n";
+
+    if (!isIOIdle) {
+      if (++countIOBurst >= execProcIO.burstTimeIO) {
+        std::cout << "\t\t" << "IO" << "\t\t" << execProcIO.procName
+                  << "[Comp]:" << countIOBurst << "\t\t" << "\n";
+        readyQ.push(execProcIO);
+        execProcIO = {};
+        isIOIdle = true;
+      } else {
+        std::cout << "\t\t" << "IO" << "\t\t" << execProcIO.procName << ":"
+                  << countIOBurst << "\t\t"
+                  << "\n";
+      }
+    }
+
+    ticksIO++;
   }
 
  private:
@@ -147,8 +135,10 @@ class Device {
   size_t ticksCPU = 0;
   size_t ticksIO = 0;
   bool isIdle = true;
-  bool working = false;
-  std::mutex mtx;
+
+  size_t countIOBurst = 0;
+  bool isIOIdle = true;
+  Process execProcIO;
 
   inline static auto cmp = [](const Process& left, const Process& right) {
     if (left.burstTimeCPU != right.burstTimeCPU)
@@ -168,7 +158,7 @@ int main() {
 
   Device d;
   d.init(procs);
-  d.start();
+  d.processor();
 
   return 0;
 }
