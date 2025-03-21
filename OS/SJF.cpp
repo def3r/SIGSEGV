@@ -1,5 +1,7 @@
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <iostream>
 #include <ostream>
 #include <queue>
@@ -13,6 +15,9 @@ typedef struct Process {
   size_t burstTimeCPU;
   size_t burstTimeIO;
   size_t burstTimeRate;  // IO burst after every n CPU bursts
+  size_t startTime = SIZE_MAX;
+  size_t completionTime;
+  size_t burstRemainCPU;
 
   Process() {}
   Process(std::string&& name,
@@ -23,15 +28,18 @@ typedef struct Process {
     procName = std::move(name);
     arrivalTime = at;
     burstTimeCPU = btCPU;
+    burstRemainCPU = btCPU;
     burstTimeIO = btIO;
     burstTimeRate = btr;
   }
+  size_t turnAroundTime() { return completionTime - arrivalTime; }
+  size_t waitingTime() { return turnAroundTime() - burstTimeCPU; }
+  size_t responseTime() { return startTime - arrivalTime; }
 } Process;
 typedef std::vector<Process> Processes;
 
 class Device {
  public:
-  size_t MAX_TICKS = 500;
   Device() : readyQ(cmp), ioQ(cmp) {}
   void init(Processes& procs) {
     this->procs = procs;
@@ -44,11 +52,11 @@ class Device {
     std::cout << "Time (tick)\tDevice\t\tProcess Served\t\tProcessess" << "\n";
     while (totalProc) {
       if (isIdle) {
-        std::cout << ticksCPU << "-" << ticksCPU + 1 << "\t\t" << "CPU"
+        std::cout << ticksCPU /* << "-" << ticksCPU + 1*/ << "\t\t" << "CPU"
                   << "\t\t" << "-" << "\t\t"
                   << "\n";
       } else {
-        std::cout << ticksCPU << "-" << ticksCPU + 1;
+        std::cout << ticksCPU;
       }
       int index = 0;
       for (const auto& proc : procs) {
@@ -66,38 +74,62 @@ class Device {
         execProc = readyQ.top();
         readyQ.pop();
         std::cout << "\t\t" << "CPU" << "\t\t" << execProc.procName
-                  << "[Sched]:" << execProc.burstTimeCPU << "\t\t" << "\n";
+                  << "[Sched]:" << execProc.burstRemainCPU << "\t\t" << "\n";
+        execProc.startTime = std::min(execProc.startTime, ticksCPU);
         lastIOBurst = 0;
         isIdle = false;
-        // ticksCPU++;
-        // ioDevice();
-        // std::cout << "\n";
+        ioDevice();
+        ticksCPU++;
+        std::cout << "\n";
+        continue;
       }
 
       if (!isIdle) {
-        if (--execProc.burstTimeCPU <= 0) {
+        if (--execProc.burstRemainCPU <= 0) {
           std::cout << "\t\t" << "CPU" << "\t\t" << execProc.procName
                     << "[Comp]\t\t" << "\n";
           isIdle = true;
           totalProc--;
+          execProc.completionTime = ticksCPU;
+          completedProcs.push_back(execProc);
           execProc = {};
         } else if (++lastIOBurst >= execProc.burstTimeRate) {
           std::cout << "\t\t" << "CPU" << "\t\t" << execProc.procName
-                    << "[Q IO]:" << execProc.burstTimeCPU << "\t\t" << "\n";
+                    << "[Q IO]:" << execProc.burstRemainCPU << "\t\t" << "\n";
           ioQ.push(execProc);
           isIdle = true;
         } else {
           std::cout << "\t\t" << "CPU"
                     << "\t\t" << execProc.procName << ":"
-                    << execProc.burstTimeCPU << "\t\t"
+                    << execProc.burstRemainCPU << "\t\t"
                     << "\n";
         }
       }
 
-      ticksCPU++;
       ioDevice();
+      ticksCPU++;
       std::cout << "\n";
     }
+    Debug();
+  }
+
+  void Debug() {
+    for (auto& proc : completedProcs) {
+      std::cout << proc.procName << ":\n\t\tStart time:\t\t" << proc.startTime
+                << "\n\t\tResponse Time:\t\t" << proc.responseTime()
+                << "\n\t\tCompletion time:\t" << proc.completionTime
+                << "\n\t\tTurnaround Time:\t" << proc.turnAroundTime()
+                << "\n\t\tWaiting Time:\t\t" << proc.waitingTime() << "\n";
+    }
+    std::cout << "Avg Waiting Time: " << avgWaitingTime();
+  }
+
+  double avgWaitingTime() {
+    double sum = 0;
+    for (auto& proc : completedProcs) {
+      sum += proc.waitingTime();
+    }
+    return (double)(sum / completedProcs.size());
   }
 
   void ioDevice() {
@@ -108,7 +140,6 @@ class Device {
                 << "[Sched]:" << countIOBurst << "\t\t" << "\n";
       countIOBurst = 0;
       isIOIdle = false;
-      ticksIO++;
       return;
     }
 
@@ -125,15 +156,13 @@ class Device {
                   << "\n";
       }
     }
-
-    ticksIO++;
   }
 
  private:
+  Processes completedProcs = {};
   Processes procs = {};
   size_t totalProc = 0;
   size_t ticksCPU = 0;
-  size_t ticksIO = 0;
   bool isIdle = true;
 
   size_t countIOBurst = 0;
