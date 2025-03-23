@@ -9,6 +9,12 @@
 #include <utility>
 #include <vector>
 
+#define LOG_TICK(ticks) std::cout << ticks;
+#define LOG(tick, device, procData) \
+  std::cout << tick << "\t" << device << "\t\t" << procData << "\n";
+#define LOG_DEBUG(name, label, info) \
+  std::cout << name << "\n\t\t" << label "\t" << info;
+
 typedef struct Process {
   enum State { READY, RUNNING, BLOCKED, TERMINATED };
   std::string procName;
@@ -62,15 +68,11 @@ class Device {
 
   void start() { processor(); }
 
-#define LOG(tick, device, procData) \
-  std::cout << tick << "\t" << device << "\t\t" << procData << "\n";
-#define LOG_TICK() std::cout << ticksCPU;
-
   void processor() {
     Process execProc;
     LOG("Time (tick)", "Device", "Process Served")
     while (totalProc) {
-      LOG_TICK()
+      LOG_TICK(ticksCPU)
       if (isCPUIdle) {
         LOG("\t", "CPU", "-");
       }
@@ -109,35 +111,30 @@ class Device {
         execProc = proc;
         execProc.startTime = std::min(execProc.startTime, ticksCPU);
         isCPUIdle = false;
-        std::cout << "\n";
       }
 
       ioDevice();
       ticksCPU++;
-      std::cout << "\n";
+      LOG("", "", "")
     }
   }
 
   void ioDevice() {
     if (!isIOIdle) {
       if (++countIOBurst >= execProcIO.burstTimeIO) {
-        std::cout << "\t\t" << "IO" << "\t\t" << execProcIO.procName
-                  << "[Comp]:" << countIOBurst << "\t\t" << "\n";
+        LOG("\t", "IO", execProcIO.procName << "[Comp]:" << countIOBurst)
         readyQ.push(execProcIO);
         execProcIO = {};
         isIOIdle = true;
       } else {
-        std::cout << "\t\t" << "IO" << "\t\t" << execProcIO.procName << ":"
-                  << countIOBurst << "\t\t"
-                  << "\n";
+        LOG("\t", "IO", execProcIO.procName << ":" << countIOBurst)
       }
     }
 
     if (isIOIdle && !ioQ.empty()) {
       execProcIO = ioQ.top();
       ioQ.pop();
-      std::cout << "\t\t" << "IO" << "\t\t" << execProcIO.procName
-                << "[Sched]:" << countIOBurst << "\t\t" << "\n";
+      LOG("\t", "IO", execProcIO.procName << "[Sched]:" << countIOBurst)
       countIOBurst = 0;
       isIOIdle = false;
     }
@@ -145,11 +142,12 @@ class Device {
 
   void debug() {
     for (auto& proc : completedProcs) {
-      std::cout << proc.procName << ":\n\t\tStart time:\t\t" << proc.startTime
-                << "\n\t\tResponse Time:\t\t" << proc.responseTime()
-                << "\n\t\tCompletion time:\t" << proc.completionTime
-                << "\n\t\tTurnaround Time:\t" << proc.turnAroundTime()
-                << "\n\t\tWaiting Time:\t\t" << proc.waitingTime() << "\n";
+      LOG_DEBUG(proc.procName, "Arrival Time:\t", proc.arrivalTime)
+      LOG_DEBUG("", "Start Time:\t", proc.startTime)
+      LOG_DEBUG("", "Response Time:\t", proc.responseTime())
+      LOG_DEBUG("", "Completion Time:", proc.completionTime)
+      LOG_DEBUG("", "Turnaround Time:", proc.turnAroundTime())
+      LOG_DEBUG("", "Waiting Time:\t", proc.waitingTime() << "\n")
     }
     std::cout << "Avg Waiting Time: " << avgWaitingTime();
   }
@@ -185,8 +183,7 @@ class Device {
     int index = 0;
     for (auto& proc : procs) {
       if (proc.arrivalTime == ticksCPU) {
-        std::cout << "\t\t" << "CPU" << "\t\t" << proc.procName
-                  << "[Arrive]\t\t" << "\n";
+        LOG("\t", "CPU", proc.procName << "[Arrive]")
         proc.state = Process::State::READY;
         readyQ.push(proc);
         procs.erase(procs.begin() + index);
