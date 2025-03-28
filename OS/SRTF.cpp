@@ -134,9 +134,9 @@ class Device {
     if (isIOIdle && !ioQ.empty()) {
       execProcIO = ioQ.top();
       ioQ.pop();
-      LOG("\t", "IO", execProcIO.procName << "[Sched]:" << countIOBurst)
       countIOBurst = 0;
       isIOIdle = false;
+      LOG("\t", "IO", execProcIO.procName << "[Sched]:" << countIOBurst)
     }
   }
 
