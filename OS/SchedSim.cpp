@@ -2,10 +2,12 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <fstream>
 #include <iostream>
 #include <ostream>
 #include <queue>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -30,7 +32,7 @@ typedef struct Process {
   State state;
 
   Process() {}
-  Process(std::string&& name,
+  Process(const std::string& name,
           size_t at,
           size_t btCPU,
           size_t btIO,
@@ -369,6 +371,49 @@ class Device {
   }
 };
 
+Processes GetProcs() {
+#define GetIndex(exec)                           \
+  if (indx != 0) {                               \
+    sv.remove_prefix(indx + 1);                  \
+  }                                              \
+  indx = sv.find_first_of(";");                  \
+  if (indx == std::string::npos) {               \
+    std::cout << "Invalid Format in procs.proc"; \
+    exit(1);                                     \
+  }                                              \
+  exec
+
+  std::fstream procFile("procs.proc");
+  if (!procFile) {
+    std::cout << "Unable to open procs.proc";
+    exit(1);
+  }
+  int indx = 0;
+  Processes procs;
+  std::string line;
+  std::string_view sv;
+  std::string procName;
+  size_t arrivalTime = SIZE_MAX;
+  size_t burstTimeCPU = SIZE_MAX;
+  size_t burstTimeIO = SIZE_MAX;
+  size_t burstTimeRate = SIZE_MAX;
+  size_t burstRemainCPU = SIZE_MAX;
+
+  while (std::getline(procFile, line)) {
+    indx = 0;
+    sv = line;
+    GetIndex(procName = sv.substr(0, indx));
+    GetIndex(arrivalTime = std::stoull((std::string)sv.substr(0, indx)));
+    GetIndex(burstTimeCPU = std::stoull((std::string)sv.substr(0, indx)));
+    GetIndex(burstTimeIO = std::stoull((std::string)sv.substr(0, indx)));
+    sv.remove_prefix(indx + 1);
+    burstTimeRate = std::stoull((std::string)sv);
+    procs.push_back(Process(procName, arrivalTime, burstTimeCPU, burstTimeIO,
+                            burstTimeRate));
+  }
+  return std::move(procs);
+}
+
 int main(int argc, char* argv[]) {
   Schedulers schedulers;
   std::vector<std::string> args(argv + 1, argv + argc);
@@ -390,12 +435,7 @@ int main(int argc, char* argv[]) {
     schedulers.push_back(Scheduler::SJF);
   }
 
-  Processes procs;
-  procs.push_back(Process("P0", 0, 24, 2, 5));
-  procs.push_back(Process("P1", 3, 17, 3, 6));
-  procs.push_back(Process("P2", 8, 50, 2, 5));
-  procs.push_back(Process("P3", 15, 10, 3, 6));
-
+  Processes procs = GetProcs();
   Device d;
   for (const auto& scheduler : schedulers) {
     d.init(procs, {.sched = scheduler, .q = 5});
