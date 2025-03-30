@@ -321,12 +321,13 @@ class Device {
   }
 
   void ScheduleProc() {
-    auto proc = readyQ->top();
+    Process proc;
     if (!auxQ.empty()) {
       proc = auxQ.top();
       auxQ.pop();
       q = proc.saveContextOfq - 1;
     } else {
+      proc = readyQ->top();
       readyQ->pop();
       q = -1;
     }
