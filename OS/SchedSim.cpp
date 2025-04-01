@@ -147,6 +147,8 @@ class Device {
       this->readyQ = &burstReadyQ;
     } else if (scheduler == Scheduler::SRTF) {
       this->readyQ = &remainReadyQ;
+    } else {
+      this->readyQ = &regularReadyQ;
     }
   }
 
@@ -230,6 +232,7 @@ class Device {
     completedProcs = {};
     q = 0;
     ticksCPU = 0;
+    ticksCPUIdle = 0;
     isCPUIdle = true;
 
     countIOBurst = 0;
