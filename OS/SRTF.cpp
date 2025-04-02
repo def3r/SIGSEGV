@@ -98,6 +98,8 @@ class Device {
         }
       }
 
+      ioDevice();
+
       bool toSchedule =
           !readyQ.empty() &&
           (isCPUIdle || readyQ.top().burstRemainCPU < execProc.burstRemainCPU);
@@ -113,7 +115,6 @@ class Device {
         isCPUIdle = false;
       }
 
-      ioDevice();
       ticksCPU++;
       LOG("", "", "")
     }

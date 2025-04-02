@@ -97,6 +97,8 @@ class Device {
         }
       }
 
+      ioDevice();
+
       if (isCPUIdle && !readyQ.empty()) {
         execProc = readyQ.top();
         readyQ.pop();
@@ -105,7 +107,6 @@ class Device {
         isCPUIdle = false;
       }
 
-      ioDevice();
       ticksCPU++;
       std::cout << "\n";
     }

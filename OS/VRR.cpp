@@ -100,6 +100,8 @@ class Device {
         }
       }
 
+      ioDevice();
+
       bool toSchedule = (!readyQ.empty() || !auxQ.empty()) &&
                         (isCPUIdle || q + 1 >= timeQuantum);
       if (toSchedule) {
@@ -122,7 +124,6 @@ class Device {
         isCPUIdle = false;
       }
 
-      ioDevice();
       ticksCPU++;
       q++;
       std::cout << "\n";

@@ -246,9 +246,7 @@ class Device {
 
   void Processor() {
     LOG("Time (tick)", "Device", "Process Served")
-    bool executed;
     while (totalProc) {
-      executed = false;
       LOG_TICK(ticksCPU)
       if (isCPUIdle) {
         LOG("\t", "CPU", "-");
@@ -256,15 +254,14 @@ class Device {
 
       FreshArrivals();
       if (!isCPUIdle) {
-        executed = true;
         ExecCPU();
       }
+      IODevice();
       if (ToSchedule()) {
         ScheduleProc();
       }
-      IODevice();
 
-      if (!executed && isCPUIdle) {
+      if (isCPUIdle) {
         ticksCPUIdle++;
       }
       ticksCPU++;
@@ -272,6 +269,7 @@ class Device {
       LOG("", "", "")
     }
     ticksCPU--;
+    ticksCPUIdle--;
   }
 
   void IODevice() {
