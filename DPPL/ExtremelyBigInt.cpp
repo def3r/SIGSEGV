@@ -5,16 +5,16 @@
 #include <vector>
 
 class ExtremelyBigInt {
-public:
+ public:
   ExtremelyBigInt(std::string EBI) { assign(EBI); }
 
   int digiCount() { return this->toString().length(); }
 
-  std::string toString() {
+  std::string toString() const {
     std::string displayStr = "";
     int idx = 0;
     const int digiStoreSize = digiStore.size();
-    for (auto &digi : digiStore) {
+    for (auto& digi : digiStore) {
       displayStr = std::to_string(digi) + displayStr;
       const int len = displayStr.length();
       if (len % BLOCK_SIZE && idx != digiStoreSize - 1) {
@@ -48,7 +48,7 @@ public:
   ExtremelyBigInt operator+(ExtremelyBigInt EBI) {
     ExtremelyBigInt result(this->toString());
     int idx = 0;
-    for (const auto &digi : EBI.digiStore) {
+    for (const auto& digi : EBI.digiStore) {
       result.addBlock(idx++, digi);
     }
     return result;
@@ -57,7 +57,7 @@ public:
     ExtremelyBigInt result(this->toString());
     auto parsedCarry = ExtremelyBigInt::Parse(carry);
     int idx = 0;
-    for (const auto &carry : parsedCarry) {
+    for (const auto& carry : parsedCarry) {
       result.addBlock(idx++, carry);
     }
     return result;
@@ -66,7 +66,7 @@ public:
   ExtremelyBigInt operator-(ExtremelyBigInt EBI) {
     ExtremelyBigInt result(this->toString());
     int idx = 0;
-    for (const auto &borrow : EBI.digiStore) {
+    for (const auto& borrow : EBI.digiStore) {
       result.addBlock(idx++, -1 * borrow);
     }
     return result;
@@ -75,9 +75,21 @@ public:
     ExtremelyBigInt result(this->toString());
     auto parsedBorrow = ExtremelyBigInt::Parse(borrow);
     int idx = 0;
-    for (const auto &borrow : parsedBorrow) {
+    for (const auto& borrow : parsedBorrow) {
       result.addBlock(idx++, -1 * borrow);
     }
+    return result;
+  }
+
+  ExtremelyBigInt operator/(ExtremelyBigInt EBI) {
+    ExtremelyBigInt result("");
+    this->painfulDivision(EBI, result);
+    return result;
+  }
+  ExtremelyBigInt operator/(long long int divisor) {
+    ExtremelyBigInt result("");
+    ExtremelyBigInt d(std::to_string(divisor));
+    this->painfulDivision(d, result);
     return result;
   }
 
@@ -86,7 +98,49 @@ public:
     return;
   }
 
-  friend std::ostream &operator<<(std::ostream &, ExtremelyBigInt &);
+  bool operator>(const ExtremelyBigInt& EBI) {
+    if (EBI.digiStore.size() > this->digiStore.size()) {
+      return false;
+    } else if (EBI.digiStore.size() < this->digiStore.size()) {
+      return true;
+    }
+
+    unsigned long long i = digiStore.size();
+    bool isGreater = false;
+    while (i--) {
+      if (digiStore[i] == EBI.digiStore[i]) {
+        continue;
+      }
+      if (digiStore[i] > EBI.digiStore[i]) {
+        isGreater = true;
+        break;
+      }
+    }
+
+    return isGreater;
+  }
+
+  bool operator==(const ExtremelyBigInt& EBI) {
+    if (EBI.digiStore.size() != this->digiStore.size()) {
+      return false;
+    }
+
+    unsigned long long i = digiStore.size();
+    while (i--) {
+      if (digiStore[i] == EBI.digiStore[i]) {
+        continue;
+      }
+      return false;
+    }
+
+    return true;
+  }
+
+  bool operator>=(const ExtremelyBigInt& EBI) {
+    return *this > EBI || *this == EBI;
+  }
+
+  friend std::ostream& operator<<(std::ostream&, const ExtremelyBigInt&);
 
   static int digiCount(size_t n) {
     int count = 1;
@@ -102,7 +156,7 @@ public:
     return res;
   }
 
-protected:
+ protected:
   std::vector<unsigned long long> digiStore;
 
   void addBlock(int blockIdx, long long carry) {
@@ -112,7 +166,7 @@ protected:
       return;
     }
 
-    auto &digi = digiStore[blockIdx];
+    auto& digi = digiStore[blockIdx];
     unsigned long long temp = digi + carry;
     // OVERFLOW
     if (temp > ExtremelyBigInt::LIMIT) {
@@ -130,14 +184,14 @@ protected:
   }
 
   void painfulMultiply(std::vector<unsigned long long> parsedMultiplicant,
-                       ExtremelyBigInt &result) {
+                       ExtremelyBigInt& result) {
     int idx = 0;
-    for (const auto &digi : parsedMultiplicant) {
+    for (const auto& digi : parsedMultiplicant) {
       int pow = idx++;
-      for (const auto &blockData : digiStore) {
+      for (const auto& blockData : digiStore) {
         // BLOCK_SIZE = 18
         // Worst Case: Parsed Size = 18
-        // Worst Case for 18x18 digit multiplication: result = 18 Digits
+        // Worst Case for 18x18 digit multiplication: result = 36 Digits
         // thus, break into 9x9 = 18 Digits -> add to result
         const long long TENP9 = std::pow(10, 9);
 
@@ -161,6 +215,39 @@ protected:
         result = result + EBIres;
         pow++;
       }
+    }
+  }
+
+  void painfulDivision(ExtremelyBigInt& divisor, ExtremelyBigInt& quotient) {
+    if (divisor.digiStore.size() > digiStore.size()) {
+      quotient = 0;
+      return;
+    }
+
+    unsigned long long count = 0;
+    unsigned long long divisorLen = divisor.digiStore.size();
+    ExtremelyBigInt remainder("");
+    std::vector<unsigned long long>::iterator it = digiStore.begin();
+
+    while (std::distance(it, digiStore.end()) >= divisorLen) {
+      remainder.digiStore =
+          std::vector<unsigned long long>(it, it + divisorLen);
+      while (remainder >= divisor) {
+        remainder = remainder - divisor;
+        count++;
+      }
+      quotient = quotient + count;
+      it += divisorLen;
+    }
+    if (it != digiStore.end()) {
+      remainder.digiStore =
+          std::vector<unsigned long long>(it, digiStore.end());
+      while (remainder >= divisor) {
+        remainder = remainder - divisor;
+        count++;
+      }
+      quotient = quotient + count;
+      it += divisorLen;
     }
   }
 
@@ -194,20 +281,19 @@ protected:
     }
     return blocks;
   }
-  static std::string &clean(std::string &str) {
+  static std::string& clean(std::string& str) {
     str.erase(str.find_last_not_of(' ') + 1);
     str.erase(0, str.find_first_not_of(' '));
     return str;
   }
 };
 
-std::ostream &operator<<(std::ostream &os, ExtremelyBigInt &EBI) {
+std::ostream& operator<<(std::ostream& os, const ExtremelyBigInt& EBI) {
   os << EBI.toString();
   return os;
 }
 
 int main() {
-
   long long int t = 9223372036854775800;
 
   std::cout << "digi count: " << ExtremelyBigInt::digiCount(ULONG_MAX) << "\n";
@@ -243,7 +329,11 @@ int main() {
   ExtremelyBigInt l("1234567891011121314151617181912021222324252627282930");
   std::cout << "And now, for the destruction of cpu:\n";
   k = l * l * l * l;
-  std::cout << k << "\t\t" << k.digiCount() << '\n';
+  std::cout << k << "\t\t" << k.digiCount() << "\n\n";
+
+  ExtremelyBigInt b("1000000"),
+      c("10000");
+  std::cout << (b / c);
 
   return 0;
 }
