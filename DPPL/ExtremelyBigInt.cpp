@@ -44,6 +44,11 @@ class ExtremelyBigInt {
     this->painfulMultiply(parsedMultiplicant, result);
     return result;
   }
+  ExtremelyBigInt& operator*=(long long int multiplicant) {
+    auto parsedMultiplicant = ExtremelyBigInt::Parse(multiplicant);
+    this->painfulMultiply(parsedMultiplicant, *this);
+    return *this;
+  }
 
   ExtremelyBigInt operator+(ExtremelyBigInt EBI) {
     ExtremelyBigInt result(this->toString());
@@ -60,7 +65,14 @@ class ExtremelyBigInt {
     for (const auto& carry : parsedCarry) {
       result.addBlock(idx++, carry);
     }
+    // std::cout << result << ":|";
     return result;
+  }
+
+  void trim(ExtremelyBigInt& result) {
+    while (!result.digiStore.empty() && result.digiStore.back() == 0) {
+      result.digiStore.pop_back();
+    }
   }
 
   ExtremelyBigInt operator-(ExtremelyBigInt EBI) {
@@ -69,6 +81,7 @@ class ExtremelyBigInt {
     for (const auto& borrow : EBI.digiStore) {
       result.addBlock(idx++, -1 * borrow);
     }
+    trim(result);
     return result;
   }
   ExtremelyBigInt operator-(long long int borrow) {
@@ -78,11 +91,12 @@ class ExtremelyBigInt {
     for (const auto& borrow : parsedBorrow) {
       result.addBlock(idx++, -1 * borrow);
     }
+    trim(result);
     return result;
   }
 
   ExtremelyBigInt operator/(ExtremelyBigInt EBI) {
-    ExtremelyBigInt result("");
+    ExtremelyBigInt result("0");
     this->painfulDivision(EBI, result);
     return result;
   }
@@ -96,6 +110,16 @@ class ExtremelyBigInt {
   void operator=(std::string EBI) {
     assign(EBI);
     return;
+  }
+  void operator=(unsigned long long ull) {
+    assign(std::to_string(ull));
+    return;
+  }
+  ExtremelyBigInt& operator=(const ExtremelyBigInt& other) {
+    if (this != &other) {
+      digiStore = other.digiStore;
+    }
+    return *this;
   }
 
   bool operator>(const ExtremelyBigInt& EBI) {
@@ -118,6 +142,26 @@ class ExtremelyBigInt {
     }
 
     return isGreater;
+  }
+
+  bool operator<(const ExtremelyBigInt& other) const {
+    auto a = digiStore;
+    auto b = other.digiStore;
+
+    while (!a.empty() && a.back() == 0)
+      a.pop_back();
+    while (!b.empty() && b.back() == 0)
+      b.pop_back();
+
+    if (a.size() != b.size())
+      return a.size() < b.size();
+
+    for (int i = a.size() - 1; i >= 0; --i) {
+      if (a[i] != b[i])
+        return a[i] < b[i];
+    }
+
+    return false;
   }
 
   bool operator==(const ExtremelyBigInt& EBI) {
@@ -218,6 +262,7 @@ class ExtremelyBigInt {
     }
   }
 
+  // https://skanthak.hier-im-netz.de/division.html --> Knuth Algorithm D
   void painfulDivision(ExtremelyBigInt& divisor, ExtremelyBigInt& quotient) {
     if (divisor.digiStore.size() > digiStore.size()) {
       quotient = 0;
@@ -226,19 +271,28 @@ class ExtremelyBigInt {
 
     unsigned long long count = 0;
     unsigned long long divisorLen = divisor.digiStore.size();
-    ExtremelyBigInt remainder("");
+    ExtremelyBigInt remainder("0");
     std::vector<unsigned long long>::iterator it = digiStore.begin();
+    int i = 0;
 
+    remainder.digiStore.clear();
     while (std::distance(it, digiStore.end()) >= divisorLen) {
-      remainder.digiStore =
-          std::vector<unsigned long long>(it, it + divisorLen);
+      for (auto& items : std::vector<unsigned long long>(it, it + divisorLen)) {
+        remainder.digiStore.push_back(items);
+      }
+
       while (remainder >= divisor) {
         remainder = remainder - divisor;
         count++;
       }
       quotient = quotient + count;
       it += divisorLen;
+      // std::cout << i++ << count << "\t" << remainder << "\t" << divisor <<
+      // ":\t"
+      //           << divisorLen << ":\t" << quotient << ".\n"
+      //           << std::flush;
     }
+    // std::cout << remainder.digiStore.size() << ":" << divisor << "\n";
     if (it != digiStore.end()) {
       remainder.digiStore =
           std::vector<unsigned long long>(it, digiStore.end());
@@ -331,9 +385,15 @@ int main() {
   k = l * l * l * l;
   std::cout << k << "\t\t" << k.digiCount() << "\n\n";
 
-  ExtremelyBigInt b("1000000"),
-      c("10000");
-  std::cout << (b / c);
+  std::cout << "Going division\n";
+  ExtremelyBigInt b("24000000000000000000"), c("2400000000000000000");
+  std::cout << c << "m\n";
+  std::cout << b / c;
+
+  std::cout << "\nSubin:\n";
+  b = "1234567891234567891";
+  c = "1000000000000000000";
+  std::cout << b - c;
 
   return 0;
 }
