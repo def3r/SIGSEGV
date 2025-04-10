@@ -6,7 +6,11 @@
 
 class ExtremelyBigInt {
  public:
-  ExtremelyBigInt(std::string EBI) { assign(EBI); }
+  ExtremelyBigInt() { assign(""); }
+  ExtremelyBigInt(const std::string& EBI) { assign(EBI); }
+  ExtremelyBigInt(const unsigned long long& n) {
+    this->digiStore = ExtremelyBigInt::Parse(n);
+  }
 
   int digiCount() { return this->toString().length(); }
 
@@ -14,7 +18,7 @@ class ExtremelyBigInt {
     std::string displayStr = "";
     int idx = 0;
     const int digiStoreSize = digiStore.size();
-    for (auto& digi : digiStore) {
+    for (const auto& digi : digiStore) {
       displayStr = std::to_string(digi) + displayStr;
       const int len = displayStr.length();
       if (len % BLOCK_SIZE && idx != digiStoreSize - 1) {
@@ -33,50 +37,65 @@ class ExtremelyBigInt {
   // Toom Cook Algorithm is lit for Multiplication
   // But I ain't implementin that incredible algo
   // with poor code quality (skill issue, fr, fr)
-  ExtremelyBigInt operator*(ExtremelyBigInt EBI) {
-    ExtremelyBigInt result("");
+  ExtremelyBigInt operator*(const ExtremelyBigInt& EBI) {
+    ExtremelyBigInt result;
     this->painfulMultiply(EBI.digiStore, result);
     return result;
   }
-  ExtremelyBigInt operator*(long long int multiplicant) {
-    ExtremelyBigInt result("");
+  ExtremelyBigInt operator*(const long long int& multiplicant) {
+    ExtremelyBigInt result;
     auto parsedMultiplicant = ExtremelyBigInt::Parse(multiplicant);
     this->painfulMultiply(parsedMultiplicant, result);
     return result;
   }
-  ExtremelyBigInt& operator*=(long long int multiplicant) {
+  ExtremelyBigInt& operator*=(const ExtremelyBigInt& EBI) {
+    this->painfulMultiply(EBI.digiStore, *this);
+    return *this;
+  }
+  ExtremelyBigInt& operator*=(const long long int& multiplicant) {
     auto parsedMultiplicant = ExtremelyBigInt::Parse(multiplicant);
     this->painfulMultiply(parsedMultiplicant, *this);
     return *this;
   }
 
-  ExtremelyBigInt operator+(ExtremelyBigInt EBI) {
-    ExtremelyBigInt result(this->toString());
+  ExtremelyBigInt operator+(const ExtremelyBigInt& EBI) {
+    ExtremelyBigInt result;
+    result.digiStore = this->digiStore;
     int idx = 0;
     for (const auto& digi : EBI.digiStore) {
       result.addBlock(idx++, digi);
     }
     return result;
   }
-  ExtremelyBigInt operator+(long long int carry) {
-    ExtremelyBigInt result(this->toString());
+  ExtremelyBigInt operator+(const long long int& carry) {
+    ExtremelyBigInt result;
+    result.digiStore = this->digiStore;
     auto parsedCarry = ExtremelyBigInt::Parse(carry);
     int idx = 0;
     for (const auto& carry : parsedCarry) {
       result.addBlock(idx++, carry);
     }
-    // std::cout << result << ":|";
     return result;
   }
-
-  void trim(ExtremelyBigInt& result) {
-    while (!result.digiStore.empty() && result.digiStore.back() == 0) {
-      result.digiStore.pop_back();
+  ExtremelyBigInt& operator+=(const ExtremelyBigInt& EBI) {
+    int idx = 0;
+    for (const auto& digi : EBI.digiStore) {
+      this->addBlock(idx++, digi);
     }
+    return *this;
+  }
+  ExtremelyBigInt& operator+=(const long long int& carry) {
+    auto parsedCarry = ExtremelyBigInt::Parse(carry);
+    int idx = 0;
+    for (const auto& carry : parsedCarry) {
+      this->addBlock(idx++, carry);
+    }
+    return *this;
   }
 
-  ExtremelyBigInt operator-(ExtremelyBigInt EBI) {
-    ExtremelyBigInt result(this->toString());
+  ExtremelyBigInt operator-(const ExtremelyBigInt& EBI) {
+    ExtremelyBigInt result;
+    result.digiStore = this->digiStore;
     int idx = 0;
     for (const auto& borrow : EBI.digiStore) {
       result.addBlock(idx++, -1 * borrow);
@@ -84,8 +103,9 @@ class ExtremelyBigInt {
     trim(result);
     return result;
   }
-  ExtremelyBigInt operator-(long long int borrow) {
-    ExtremelyBigInt result(this->toString());
+  ExtremelyBigInt operator-(const long long int& borrow) {
+    ExtremelyBigInt result;
+    result.digiStore = this->digiStore;
     auto parsedBorrow = ExtremelyBigInt::Parse(borrow);
     int idx = 0;
     for (const auto& borrow : parsedBorrow) {
@@ -94,26 +114,53 @@ class ExtremelyBigInt {
     trim(result);
     return result;
   }
+  ExtremelyBigInt& operator-=(const ExtremelyBigInt& EBI) {
+    int idx = 0;
+    for (const auto& borrow : EBI.digiStore) {
+      this->addBlock(idx++, -1 * borrow);
+    }
+    trim(*this);
+    return *this;
+  }
+  ExtremelyBigInt& operator-=(const long long int& borrow) {
+    auto parsedBorrow = ExtremelyBigInt::Parse(borrow);
+    int idx = 0;
+    for (const auto& borrow : parsedBorrow) {
+      this->addBlock(idx++, -1 * borrow);
+    }
+    trim(*this);
+    return *this;
+  }
 
-  ExtremelyBigInt operator/(ExtremelyBigInt EBI) {
-    ExtremelyBigInt result("0");
+
+  ExtremelyBigInt operator/(const ExtremelyBigInt& EBI) {
+    ExtremelyBigInt result;
     this->painfulDivision(EBI, result);
     return result;
   }
-  ExtremelyBigInt operator/(long long int divisor) {
-    ExtremelyBigInt result("");
-    ExtremelyBigInt d(std::to_string(divisor));
+  ExtremelyBigInt operator/(const long long int& divisor) {
+    ExtremelyBigInt result;
+    ExtremelyBigInt d(divisor);
     this->painfulDivision(d, result);
     return result;
   }
-
-  void operator=(std::string EBI) {
-    assign(EBI);
-    return;
+  ExtremelyBigInt& operator/=(const ExtremelyBigInt& EBI) {
+    this->painfulDivision(EBI, *this);
+    return *this;
   }
-  void operator=(unsigned long long ull) {
+  ExtremelyBigInt& operator/=(const long long int& divisor) {
+    ExtremelyBigInt d(divisor);
+    this->painfulDivision(d, *this);
+    return *this;
+  }
+
+  ExtremelyBigInt& operator=(const std::string& EBI) {
+    assign(EBI);
+    return *this;
+  }
+  ExtremelyBigInt& operator=(const unsigned long long& ull) {
     assign(std::to_string(ull));
-    return;
+    return *this;
   }
   ExtremelyBigInt& operator=(const ExtremelyBigInt& other) {
     if (this != &other) {
@@ -121,7 +168,6 @@ class ExtremelyBigInt {
     }
     return *this;
   }
-
   bool operator>(const ExtremelyBigInt& EBI) {
     if (EBI.digiStore.size() > this->digiStore.size()) {
       return false;
@@ -140,35 +186,32 @@ class ExtremelyBigInt {
         break;
       }
     }
-
     return isGreater;
   }
-
-  bool operator<(const ExtremelyBigInt& other) const {
-    auto a = digiStore;
-    auto b = other.digiStore;
-
-    while (!a.empty() && a.back() == 0)
-      a.pop_back();
-    while (!b.empty() && b.back() == 0)
-      b.pop_back();
-
-    if (a.size() != b.size())
-      return a.size() < b.size();
-
-    for (int i = a.size() - 1; i >= 0; --i) {
-      if (a[i] != b[i])
-        return a[i] < b[i];
+  bool operator<(const ExtremelyBigInt& EBI) const {
+    if (EBI.digiStore.size() < this->digiStore.size()) {
+      return false;
+    } else if (EBI.digiStore.size() > this->digiStore.size()) {
+      return true;
     }
 
-    return false;
+    unsigned long long i = digiStore.size();
+    bool isLesser = false;
+    while (i--) {
+      if (digiStore[i] == EBI.digiStore[i]) {
+        continue;
+      }
+      if (digiStore[i] < EBI.digiStore[i]) {
+        isLesser = true;
+        break;
+      }
+    }
+    return isLesser;
   }
-
   bool operator==(const ExtremelyBigInt& EBI) {
     if (EBI.digiStore.size() != this->digiStore.size()) {
       return false;
     }
-
     unsigned long long i = digiStore.size();
     while (i--) {
       if (digiStore[i] == EBI.digiStore[i]) {
@@ -176,12 +219,13 @@ class ExtremelyBigInt {
       }
       return false;
     }
-
     return true;
   }
-
   bool operator>=(const ExtremelyBigInt& EBI) {
     return *this > EBI || *this == EBI;
+  }
+  bool operator<=(const ExtremelyBigInt& EBI) {
+    return *this < EBI || *this == EBI;
   }
 
   friend std::ostream& operator<<(std::ostream&, const ExtremelyBigInt&);
@@ -263,7 +307,7 @@ class ExtremelyBigInt {
   }
 
   // https://skanthak.hier-im-netz.de/division.html --> Knuth Algorithm D
-  void painfulDivision(ExtremelyBigInt& divisor, ExtremelyBigInt& quotient) {
+  void painfulDivision(const ExtremelyBigInt& divisor, ExtremelyBigInt& quotient) {
     if (divisor.digiStore.size() > digiStore.size()) {
       quotient = 0;
       return;
@@ -271,7 +315,7 @@ class ExtremelyBigInt {
 
     unsigned long long count = 0;
     unsigned long long divisorLen = divisor.digiStore.size();
-    ExtremelyBigInt remainder("0");
+    ExtremelyBigInt remainder;
     std::vector<unsigned long long>::iterator it = digiStore.begin();
     int i = 0;
 
@@ -287,12 +331,7 @@ class ExtremelyBigInt {
       }
       quotient = quotient + count;
       it += divisorLen;
-      // std::cout << i++ << count << "\t" << remainder << "\t" << divisor <<
-      // ":\t"
-      //           << divisorLen << ":\t" << quotient << ".\n"
-      //           << std::flush;
     }
-    // std::cout << remainder.digiStore.size() << ":" << divisor << "\n";
     if (it != digiStore.end()) {
       remainder.digiStore =
           std::vector<unsigned long long>(it, digiStore.end());
@@ -305,6 +344,7 @@ class ExtremelyBigInt {
     }
   }
 
+  // Little Endian stlye assignment
   void assign(std::string EBI) {
     digiStore.clear();
     ExtremelyBigInt::clean(EBI);
@@ -322,6 +362,12 @@ class ExtremelyBigInt {
     }
     digiStore.push_back(std::stoull(EBI));
     // clang-format on
+  }
+
+  void trim(ExtremelyBigInt& result) {
+    while (!result.digiStore.empty() && result.digiStore.back() == 0) {
+      result.digiStore.pop_back();
+    }
   }
 
   static inline int BLOCK_SIZE = 18;
@@ -393,7 +439,10 @@ int main() {
   std::cout << "\nSubin:\n";
   b = "1234567891234567891";
   c = "1000000000000000000";
-  std::cout << b - c;
+  std::cout << b - c << "\n";
+
+  ExtremelyBigInt z(9);
+  std::cout << "The newz: " << z;
 
   return 0;
 }
