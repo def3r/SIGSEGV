@@ -34,30 +34,6 @@ class ExtremelyBigInt {
     return displayStr;
   }
 
-  // Toom Cook Algorithm is lit for Multiplication
-  // But I ain't implementin that incredible algo
-  // with poor code quality (skill issue, fr, fr)
-  ExtremelyBigInt operator*(const ExtremelyBigInt& EBI) {
-    ExtremelyBigInt result;
-    this->painfulMultiply(EBI.digiStore, result);
-    return result;
-  }
-  ExtremelyBigInt operator*(const long long int& multiplicant) {
-    ExtremelyBigInt result;
-    auto parsedMultiplicant = ExtremelyBigInt::Parse(multiplicant);
-    this->painfulMultiply(parsedMultiplicant, result);
-    return result;
-  }
-  ExtremelyBigInt& operator*=(const ExtremelyBigInt& EBI) {
-    this->painfulMultiply(EBI.digiStore, *this);
-    return *this;
-  }
-  ExtremelyBigInt& operator*=(const long long int& multiplicant) {
-    auto parsedMultiplicant = ExtremelyBigInt::Parse(multiplicant);
-    this->painfulMultiply(parsedMultiplicant, *this);
-    return *this;
-  }
-
   ExtremelyBigInt operator+(const ExtremelyBigInt& EBI) {
     ExtremelyBigInt result;
     result.digiStore = this->digiStore;
@@ -132,6 +108,29 @@ class ExtremelyBigInt {
     return *this;
   }
 
+  // Toom Cook Algorithm is lit for Multiplication
+  // But I ain't implementin that incredible algo
+  // with poor code quality (skill issue, fr, fr)
+  ExtremelyBigInt operator*(const ExtremelyBigInt& EBI) {
+    ExtremelyBigInt result;
+    this->painfulMultiply(EBI.digiStore, result);
+    return result;
+  }
+  ExtremelyBigInt operator*(const long long int& multiplicant) {
+    ExtremelyBigInt result;
+    auto parsedMultiplicant = ExtremelyBigInt::Parse(multiplicant);
+    this->painfulMultiply(parsedMultiplicant, result);
+    return result;
+  }
+  ExtremelyBigInt& operator*=(const ExtremelyBigInt& EBI) {
+    this->painfulMultiply(EBI.digiStore, *this);
+    return *this;
+  }
+  ExtremelyBigInt& operator*=(const long long int& multiplicant) {
+    auto parsedMultiplicant = ExtremelyBigInt::Parse(multiplicant);
+    this->painfulMultiply(parsedMultiplicant, *this);
+    return *this;
+  }
 
   ExtremelyBigInt operator/(const ExtremelyBigInt& EBI) {
     ExtremelyBigInt result;
@@ -307,7 +306,8 @@ class ExtremelyBigInt {
   }
 
   // https://skanthak.hier-im-netz.de/division.html --> Knuth Algorithm D
-  void painfulDivision(const ExtremelyBigInt& divisor, ExtremelyBigInt& quotient) {
+  void painfulDivision(const ExtremelyBigInt& divisor,
+                       ExtremelyBigInt& quotient) {
     if (divisor.digiStore.size() > digiStore.size()) {
       quotient = 0;
       return;
