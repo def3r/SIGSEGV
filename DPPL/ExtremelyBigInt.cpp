@@ -31,6 +31,9 @@ class ExtremelyBigInt {
       idx++;
     }
     displayStr.erase(0, displayStr.find_first_not_of('0'));
+    if (isNegative) {
+      displayStr = "-" + displayStr;
+    }
     return displayStr;
   }
 
@@ -69,12 +72,23 @@ class ExtremelyBigInt {
     return *this;
   }
 
-  ExtremelyBigInt operator-(const ExtremelyBigInt& EBI) {
+  ExtremelyBigInt operator-(ExtremelyBigInt& EBI) {
     ExtremelyBigInt result;
     result.digiStore = this->digiStore;
     int idx = 0;
+    int correction = 1;
+    if (this->isNegative && !EBI.isNegative) {
+      correction = 1;
+      result.isNegative = this->isNegative;
+    } else if (this->isNegative && EBI.isNegative) {
+      correction = -1;
+      if (EBI > *this) {
+        result.isNegative = false;
+      }
+    } else if (!this->isNegative && !EBI.isNegative) {
+    }
     for (const auto& borrow : EBI.digiStore) {
-      result.addBlock(idx++, -1 * borrow);
+      result.addBlock(idx++, -1 * borrow * correction);
     }
     trim(result);
     return result;
@@ -114,42 +128,50 @@ class ExtremelyBigInt {
   ExtremelyBigInt operator*(const ExtremelyBigInt& EBI) {
     ExtremelyBigInt result;
     this->painfulMultiply(EBI.digiStore, result);
+    ManageSign(EBI, result);
     return result;
   }
   ExtremelyBigInt operator*(const long long int& multiplicant) {
     ExtremelyBigInt result;
     auto parsedMultiplicant = ExtremelyBigInt::Parse(multiplicant);
     this->painfulMultiply(parsedMultiplicant, result);
+    ManageSign(multiplicant, result);
     return result;
   }
   ExtremelyBigInt& operator*=(const ExtremelyBigInt& EBI) {
     this->painfulMultiply(EBI.digiStore, *this);
+    ManageSign(EBI, *this);
     return *this;
   }
   ExtremelyBigInt& operator*=(const long long int& multiplicant) {
     auto parsedMultiplicant = ExtremelyBigInt::Parse(multiplicant);
     this->painfulMultiply(parsedMultiplicant, *this);
+    ManageSign(multiplicant, *this);
     return *this;
   }
 
-  ExtremelyBigInt operator/(const ExtremelyBigInt& EBI) {
+  ExtremelyBigInt operator/(ExtremelyBigInt& EBI) {
     ExtremelyBigInt result;
     this->painfulDivision(EBI, result);
+    ManageSign(EBI, result);
     return result;
   }
-  ExtremelyBigInt operator/(const long long int& divisor) {
+  ExtremelyBigInt operator/(long long int& divisor) {
     ExtremelyBigInt result;
     ExtremelyBigInt d(divisor);
     this->painfulDivision(d, result);
+    ManageSign(divisor, result);
     return result;
   }
-  ExtremelyBigInt& operator/=(const ExtremelyBigInt& EBI) {
+  ExtremelyBigInt& operator/=(ExtremelyBigInt& EBI) {
     this->painfulDivision(EBI, *this);
+    ManageSign(EBI, *this);
     return *this;
   }
   ExtremelyBigInt& operator/=(const long long int& divisor) {
     ExtremelyBigInt d(divisor);
     this->painfulDivision(d, *this);
+    ManageSign(divisor, *this);
     return *this;
   }
 
@@ -245,6 +267,7 @@ class ExtremelyBigInt {
 
  protected:
   std::vector<unsigned long long> digiStore;
+  bool isNegative = false;
 
   void addBlock(int blockIdx, long long carry) {
     if (blockIdx == digiStore.size()) {
@@ -306,8 +329,7 @@ class ExtremelyBigInt {
   }
 
   // https://skanthak.hier-im-netz.de/division.html --> Knuth Algorithm D
-  void painfulDivision(const ExtremelyBigInt& divisor,
-                       ExtremelyBigInt& quotient) {
+  void painfulDivision(ExtremelyBigInt& divisor, ExtremelyBigInt& quotient) {
     if (divisor.digiStore.size() > digiStore.size()) {
       quotient = 0;
       return;
@@ -352,6 +374,10 @@ class ExtremelyBigInt {
       digiStore.push_back(0);
       return;
     }
+    if (EBI[0] == '-') {
+      isNegative = true;
+      EBI = EBI.substr(1);
+    }
 
     // clang-format off
     while (EBI.size() > BLOCK_SIZE) {
@@ -367,6 +393,23 @@ class ExtremelyBigInt {
   void trim(ExtremelyBigInt& result) {
     while (!result.digiStore.empty() && result.digiStore.back() == 0) {
       result.digiStore.pop_back();
+    }
+  }
+
+  void ManageSign(const ExtremelyBigInt& EBI, ExtremelyBigInt& result) {
+    if ((EBI.isNegative && this->isNegative) ||
+        (!EBI.isNegative && !this->isNegative)) {
+      result.isNegative = false;
+    } else {
+      result.isNegative = true;
+    }
+  }
+  void ManageSign(const long long int& multiplicant, ExtremelyBigInt& result) {
+    if ((multiplicant < 0 && this->isNegative) ||
+        (multiplicant > 0 && !this->isNegative)) {
+      result.isNegative = false;
+    } else {
+      result.isNegative = true;
     }
   }
 
@@ -426,7 +469,8 @@ int main() {
   k = i * i;
   std::cout << i << " " << k << "\n";
 
-  ExtremelyBigInt l("1234567891011121314151617181912021222324252627282930");
+  ExtremelyBigInt l(
+      "12345678910111213141516171819120212223242526272829307474747477777777");
   std::cout << "And now, for the destruction of cpu:\n";
   k = l * l * l * l;
   std::cout << k << "\t\t" << k.digiCount() << "\n\n";
@@ -441,8 +485,9 @@ int main() {
   c = "1000000000000000000";
   std::cout << b - c << "\n";
 
-  ExtremelyBigInt z(9);
-  std::cout << "The newz: " << z;
+  ExtremelyBigInt z("-1000000000000"), y("1000000000");
+  std::cout << "The new z: " << z << "\t" << y << "\t";
+  std::cout << (z * y) << "\t" << (z / y) << "\t" << (z - y);
 
   return 0;
 }
