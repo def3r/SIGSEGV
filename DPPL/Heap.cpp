@@ -31,6 +31,7 @@ class Heap {
       exit(1);
     }
     InsertNode(ptr);
+    ptr = nullptr;
   }
 
   void display() {
@@ -171,7 +172,6 @@ int main() {
   heap.remove();
   heap.display();
   heap.insert({7, 1, 8, 6});
-  // heap.insert({17, 11, 81, 61, 10, 22, 23});
   heap.display();
   heap.tree();
 
