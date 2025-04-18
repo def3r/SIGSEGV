@@ -30,5 +30,5 @@ Although very different from the implementation as well as concept of `bone`, th
 - [ ] Build & monitor a cmake project
 - [ ] Improve performance
 - [ ] Extend to win
-- [ ] Add restart, quit, etc keybinds
+- [x] Add restart, quit, etc keybinds
 - [ ] Expand to other langs that i use

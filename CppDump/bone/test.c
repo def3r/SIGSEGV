@@ -7,8 +7,12 @@ int main() {
   //   printf("interesting, this will wokr!\nright? ");
   //   sleep(1);
   // }
-  printf("interesting, this will wokr!\nright? ");
+  printf("test ohoo 123 123!\nright? ");
   scanf("%d", &i);
-  printf("lol nerd %d\n", i);
+  printf("well, :D nerd %d\n", i);
+  scanf("%d", &i);
+  while (1) {
+    printf("|");
+  }
   return 0;
 }
