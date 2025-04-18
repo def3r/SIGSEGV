@@ -1,6 +1,3 @@
-// FIX:
-// C R I T I C A L: NEED AN URGENT REFACTOR
-
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <sys/wait.h>
@@ -9,12 +6,10 @@
 
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
 #include <csignal>
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
-#include <mutex>
 #include <ostream>
 #include <string>
 #include <thread>
@@ -22,40 +17,64 @@
 
 namespace fs = std::filesystem;
 
+// clang-format off
 namespace ANSI {
-std::string RED = "\033[31m";
-std::string GREEN = "\033[32m";
-std::string YELLOW = "\033[33m";
-std::string GREY = "\033[90m";
-std::string RESET = "\033[0m";
-std::string CLEAR = "\033[2J";
+std::string CLEAR   = "\033[2J";
 std::string GOTOTOP = "\033[H";
+
+std::string RED     = "\033[31m";
+std::string GREY    = "\033[90m";
+std::string RESET   = "\033[0m";
+std::string GREEN   = "\033[32m";
+std::string YELLOW  = "\033[33m";
 }  // namespace ANSI
 
 namespace Log {
-void msg(const std::string& msg) {
-  std::cout << ANSI::GREY << "[bone]: " << ANSI::RESET << msg << ANSI::RESET
-            << "\n";
+enum class Level { Info, Warning, Error, Success };
+
+#define HELP(key, help)                                                     \
+  std::cout << bone() << ANSI::GREY << key << "\t\t" << ANSI::RESET << help \
+            << "\n"
+
+inline std::string bone() { return std::string(ANSI::GREY + "[bone]: " + ANSI::RESET);}
+inline void help() {
+  std::cout << ANSI::YELLOW << "[bone h]" << "\n";
+  HELP("c", "Clear Screen");
+  HELP("r", "Restart Program");
+  HELP("q", "Quit bone");
+  HELP("h", "H1l[]!");
 }
-void warning(const std::string& msg) {
-  std::cout << ANSI::GREY << "[bone]: " << ANSI::YELLOW << msg << ANSI::RESET
-            << "\n";
+
+void log(Level level, const std::string& msg) {
+  std::string color = "";
+  switch (level) {
+    case Level::Info:    color = ANSI::RESET; break;
+    case Level::Warning: color = ANSI::YELLOW; break;
+    case Level::Error:   color = ANSI::RED; break;
+    case Level::Success: color = ANSI::GREEN; break;
+  }
+  std::cout << bone() << color << msg << ANSI::RESET << "\n";
+  if (level == Level::Error) {
+    exit(1);
+  }
 }
-void error(const std::string& msg) {
-  std::cout << ANSI::GREY << "[bone]: " << ANSI::RED << msg << ANSI::RESET
-            << "\n";
-  exit(1);
-}
-void success(const std::string& msg) {
-  std::cout << ANSI::GREY << "[bone]: " << ANSI::GREEN << msg << ANSI::RESET
-            << "\n";
-}
+
+inline void msg(const std::string& msg) { log(Level::Info, msg); }
+inline void error(const std::string& msg) { log(Level::Error, msg); }
+inline void warning(const std::string& msg) { log(Level::Warning, msg); }
+inline void success(const std::string& msg) { log(Level::Success, msg); }
+inline void clear() { std::cout << ANSI::CLEAR << ANSI::GOTOTOP << std::flush; }
 }  // namespace Log
+// clang-format on
 
 typedef struct Compile {
-  std::string compiler = "";
   fs::path srcFile = "";
   fs::path execFile = "";
+  bool execExists = false;
+  std::string compiler = "";
+  enum Extension { NONE, C, CPP, OHTER } extension = Extension::NONE;
+
+  Compile(const std::string& inputFile) : srcFile(inputFile) {}
 
   bool start() const {
     std::string cmd =
@@ -66,16 +85,48 @@ typedef struct Compile {
     Log::success("Compiled " + execFile.filename().string());
     return false;
   }
+
+  void verifyExecFile() {
+    execFile = srcFile;
+    if (extension >= Extension::C || extension <= Extension::CPP) {
+      execExists = true;
+      execFile.replace_extension(".out");
+    } else if (extension == Extension::OHTER) {
+      Log::error("Unknown Extension: " + srcFile.extension().string());
+    }
+    if (execExists && !fs::exists(execFile)) {
+      Log::warning("No executable found");
+      start();
+    }
+  }
+
+  void verifySrcFile() {
+    if (!fs::exists(srcFile)) {
+      Log::error("Cannot find `" + srcFile.filename().string() + "`");
+    }
+    if (srcFile.has_extension()) {
+      if (srcFile.extension() == ".c" || srcFile.extension() == ".C") {
+        compiler = "gcc";
+        extension = Extension::C;
+        Log::msg("Extension: C");
+      } else if (srcFile.extension() == ".cpp" ||
+                 srcFile.extension() == ".CPP") {
+        compiler = "g++";
+        extension = Extension::CPP;
+        Log::msg("Extension: Cpp");
+      } else {
+        extension = Extension::OHTER;
+        Log::msg("Extension: Other");
+      }
+    }
+  }
 } Compile;
 
 typedef struct Child {
   pid_t pid;
   std::string execFile = "";
   struct termios resetAttr, boneAttr;
-
-  inline static std::mutex mtx;
-  inline static std::condition_variable cv;
-  inline static std::atomic<bool> isExecuting = false;
+  std::atomic<bool> isExecuting = false;
 
   Child(const struct termios& resetAttr, const std::string& execFile)
       : resetAttr(resetAttr), execFile(execFile) {
@@ -88,6 +139,7 @@ typedef struct Child {
       return false;
     }
     isExecuting = true;
+
     pid = fork();
     if (pid < 0) {
       return false;
@@ -100,19 +152,10 @@ typedef struct Child {
 
     giveTTY(pid, pid);
 
-    // std::thread([this]() {
-    //   int status;
-    //   waitpid(pid, &status, 0);
-    //   getTTY();
-    //   Log::msg("Child " + std::to_string(pid) + " exited with status " +
-    //            std::to_string(status));
-    // }).detach();
-
     return true;
   }
 
   bool despawn() {
-    // std::unique_lock<std::mutex> lock(mtx);
     kill(pid, SIGTERM);
     isExecuting = false;
     std::this_thread::yield();
@@ -154,6 +197,12 @@ typedef struct Child {
 
 struct termios newAttr, oldAttr;
 
+void getTermAttr() {
+  tcgetattr(STDIN_FILENO, &oldAttr);
+  newAttr = oldAttr;
+  newAttr.c_lflag &= ~(ICANON | ECHO);
+}
+
 void cleanup() {
   tcsetattr(STDIN_FILENO, TCSANOW, &oldAttr);
   int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
@@ -161,133 +210,90 @@ void cleanup() {
   tcsetpgrp(STDIN_FILENO, getpgrp());
 }
 
-int main(int argc, char* argv[]) {
-  std::vector<std::string> args(argv + 1, argv + argc);
-
-  if (args.size() == 0) {
-    Log::error("No file provided.");
-  }
-  std::string file = args.front();
-
-  fs::path srcFile = file;
-  if (!fs::exists(srcFile)) {
-    Log::error("Cannot find `" + srcFile.filename().string() + "`");
-  }
-
-  tcgetattr(STDIN_FILENO, &oldAttr);
-  newAttr = oldAttr;
-  newAttr.c_lflag &= ~(ICANON | ECHO);
-
-  atexit(cleanup);
-
-  Compile compile = {.srcFile = srcFile};
-  enum Extension { NONE, C, CPP, OHTER } extension = Extension::NONE;
-  if (srcFile.has_extension()) {
-    if (srcFile.extension() == ".c" || srcFile.extension() == ".C") {
-      compile.compiler = "gcc";
-      extension = Extension::C;
-      Log::msg("Extension: C");
-    } else if (srcFile.extension() == ".cpp" || srcFile.extension() == ".CPP") {
-      compile.compiler = "g++";
-      extension = Extension::CPP;
-      Log::msg("Extension: Cpp");
-    } else {
-      extension = Extension::OHTER;
-      Log::msg("Extension: Other");
-    }
-  }
-
-  bool execExists = false;
-  fs::path execFile = srcFile;
-  if (extension >= Extension::C || extension <= Extension::CPP) {
-    execExists = true;
-    execFile.replace_extension(".out");
-    compile.execFile = execFile;
-  } else if (extension == Extension::OHTER) {
-    Log::error("Unknown Extension: " + srcFile.extension().string());
-  }
-  if (execExists && !fs::exists(execFile)) {
-    Log::warning("No executable found");
-    compile.start();
-  }
-
-  Child child(oldAttr, execFile.string());
-  child.spawn();
-
+void dispatchMonitor(const Compile& compile, Child& child) {
   std::thread([&] {
     while (1) {
-      if (execExists && !fs::exists(execFile)) {
+      if (compile.execExists && !fs::exists(compile.execFile)) {
         child.respawn(compile);
         continue;
       }
 
-      if (fs::last_write_time(srcFile) > fs::last_write_time(execFile)) {
+      if (fs::last_write_time(compile.srcFile) >
+          fs::last_write_time(compile.execFile)) {
         child.respawn(compile);
       }
 
       // TODO:
       // Improve this, as this just wastes cpu cycles in the bg rn
       std::this_thread::sleep_for(std::chrono::seconds(1));
-      // Log::msg("Check" + std::to_string((fs::last_write_time(srcFile) >
-      //                                    fs::last_write_time(execFile))));
     }
   }).detach();
+}
 
-  std::atomic<bool> keepInteractive = false;
+void interactiveMode(Child& child) {
+  char c;
+  while (!child.isExecuting && tcgetpgrp(STDIN_FILENO) == getpgrp()) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    if (tcgetpgrp(STDIN_FILENO) != getpgrp()) {
+      break;
+    }
+    if (read(STDIN_FILENO, &c, 1) != 1) {
+      continue;
+    }
+
+    // clang-format off
+    switch (c) {
+      case 'h': case 'H': { Log::help(); break; }
+      case 'c': case 'C': { Log::clear(); break; }
+      case 'r': case 'R': { child.spawn(); break; }
+      case 'q': case 'Q': {
+        tcsetattr(STDIN_FILENO, TCSANOW, &oldAttr);
+        exit(0);
+      }
+      default: break;
+    }
+    // clang-format on
+  }
+}
+
+void boneManager(const Compile& compile, Child& child) {
+  dispatchMonitor(compile, child);
+
   int pid = 0;
   while (1) {
     int status;
     pid = child.pid;
     waitpid(pid, &status, 0);
     child.getTTY();
-    Log::msg("Child " + std::to_string(child.pid) + " exited with status " +
+    Log::msg("Proc " + std::to_string(child.pid) + " exited with status " +
              std::to_string(status));
-    if (Child::isExecuting) {
+    if (child.isExecuting) {
       if (pid != child.pid) {
         continue;
       }
-      Child::isExecuting = false;
+      child.isExecuting = false;
     }
 
-    // std::thread interactive([&child, &oldAttr, &keepInteractive] {
-    char c;
-    while (!Child::isExecuting && tcgetpgrp(STDIN_FILENO) == getpgrp()) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(150));
-      if (tcgetpgrp(STDIN_FILENO) != getpgrp()) {
-        break;
-      }
-      if (read(STDIN_FILENO, &c, 1) != 1) {
-        continue;
-      }
-
-      switch (c) {
-        case 'q':
-        case 'Q': {
-          tcsetattr(STDIN_FILENO, TCSANOW, &oldAttr);
-          exit(0);
-        }
-        case 'r' | 'R':
-        case 'R': {
-          child.spawn();
-          break;
-        }
-        case 'c' | 'C': {
-          std::cout << ANSI::CLEAR << ANSI::GOTOTOP << std::flush;
-        }
-        default:
-          break;
-      }
-    }
-    // });
-    // interactive.detach();
-
-    // {
-    //   std::unique_lock<std::mutex> lock(child.mtx);
-    //   child.cv.wait(lock, [&] { return Child::isExecuting; });
-    // }
-    // keepInteractive = false;
-    // write(STDIN_FILENO, "\n", 1);
+    interactiveMode(child);
   }
+}
 
-  return 0;
+int main(int argc, char* argv[]) {
+  std::vector<std::string> args(argv + 1, argv + argc);
+  if (args.size() == 0) {
+    Log::error("No file provided.");
+  }
+  std::string file = args.front();
+
+  getTermAttr();
+  atexit(cleanup);
+
+  Compile compile(file);
+  compile.verifySrcFile();
+  compile.verifyExecFile();
+
+  Child child(oldAttr, compile.execFile.string());
+  child.spawn();
+
+  boneManager(compile, child);
 }

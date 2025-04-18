@@ -20,6 +20,9 @@ Now, to execute any file, simply run it with bone:
 ```
 Anytime this `filename.c` file is modified, `bone` will automatically build it and execute it.
 
+### Keybinds:
+Once the program exits, `bone` enters the interactive mode! To open help press `h` or `H` to see all the keybinds to control `bone`
+
 ## `nob.h`
 Although very different from the implementation as well as concept of `bone`, this project is highly inspired from 
 [nob.h](https://github.com/tsoding/nob.h) by `tsodin`
