@@ -1,21 +1,37 @@
 // gcc -S -m32 stackFrames.c
 
-void bar(int a, int b) {
-  int x, y;
-
-  x = 69;
-  y = 420;
-  return;
+// no stack allocation... for local variables
+// => the parameters are not considered while 
+// allocating stack! As these are already
+// taken care off by the caller procedure
+int bar(int a, int b) {
+  a = b * a;
+  return a;
 }
 
 void foo() {
-  // The rvals 420 and 69 need stack space
-  // to be allocated as args, thus allocate
-  // 4 + 4 + 4 + 4 = 16 bytes for local vars
-  // 
-  // and definitely some alignment by the compiler
-  bar(420, 69);
+  int x = 10;
+  bar(x, 20);
+  return;
+}
 
-  int a = 100;
-  int b = 200;
+struct MyStruct {
+  int x;
+  int y;
+  int z;
+};
+
+struct MyStruct baz() {
+  struct MyStruct s;
+  s.x = 10;
+  s.y = 20;
+  s.z = 30;
+
+  // This is so stupid in the asm
+  return s;
+}
+
+int main() {
+  int a = 10;
+  a = bar(a, 10);
 }
