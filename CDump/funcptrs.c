@@ -2,14 +2,15 @@
 #include <stdlib.h>
 
 typedef struct array {
-  int size;
-  int *arr;
-  long (*sum)(struct array *);
-  void (*display)(struct array *);
+  struct array* this;
 
+  int size;
+  int* arr;
+  long (*sum)(struct array*);
+  void (*display)(struct array*);
 } Array;
 
-long ArraySum(Array *arr) {
+long ArraySum(Array* arr) {
   long res = 0;
   for (int i = 0; i < arr->size; i++) {
     res += arr->arr[i];
@@ -17,7 +18,7 @@ long ArraySum(Array *arr) {
   return res;
 }
 
-void ArrayDisplay(Array *arr) {
+void ArrayDisplay(Array* arr) {
   printf("[");
   for (int i = 0; i < arr->size; i++) {
     printf("%d, ", *(arr->arr + i));
@@ -27,14 +28,15 @@ void ArrayDisplay(Array *arr) {
   return;
 }
 
-Array *ArrayConstructor(Array *arr, int size, int content[]) {
+Array* ArrayConstructor(Array* arr, int size, int content[]) {
   arr->size = size;
-  arr->arr = (int *)calloc(size, sizeof(int));
-  for (int i = 0; i <= sizeof(content) / sizeof(content[0]); i++) {
+  arr->arr = (int*)calloc(size, sizeof(int));
+  for (int i = 0; i <= sizeof(content) / sizeof(content[0]); i++) {  // NOLINT
     arr->arr[i] = content[i];
   }
   arr->sum = &ArraySum;
   arr->display = &ArrayDisplay;
+  arr->this = arr;
   return arr;
 }
 

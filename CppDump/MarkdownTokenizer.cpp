@@ -2,7 +2,6 @@
 #include <deque>
 #include <iostream>
 #include <sstream>
-#include <stack>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -140,7 +139,7 @@ class Tokenizer {
     return (!syntaxStack.empty() && syntaxStack.front().marker == token.second);
   }
 
-  int FormatCorrections(std::deque<Stack> syntaxStack, int correction = 0) {
+  void FormatCorrections(std::deque<Stack> syntaxStack, int& correction) {
     std::deque<Stack> backupStack;
     while (!syntaxStack.empty() && syntaxStack.size() >= 2) {
       backupStack.clear();
@@ -171,17 +170,7 @@ class Tokenizer {
                         {Tokenizer::markerMap[TOS.marker], TOS.marker});
         }
         if (backupStack.size() > 0) {
-          correction = FormatCorrections(backupStack, correction);
-          // while (!backupStack.empty()) {
-          //   tokens.insert(
-          //       tokens.begin() + backupStack.back().index + ++correction,
-          //       {TokenType::TEXT, backupStack.back().marker});
-          //   if (backupStack.back().toErase) {
-          //     tokens.erase(tokens.begin() + backupStack.back().index +
-          //                  --correction);
-          //   }
-          //   backupStack.pop_back();
-          // }
+          FormatCorrections(backupStack, correction);
         }
       } else if (TOS.marker.length() > TOSm1.marker.length()) {
         TOS.marker =
@@ -196,17 +185,7 @@ class Tokenizer {
         tokens.insert(tokens.begin() + syntaxStack.back().index + ++correction,
                       {Tokenizer::markerMap[TOSm1.marker], TOSm1.marker});
         if (backupStack.size() > 0) {
-          correction = FormatCorrections(backupStack, correction);
-          // while (!backupStack.empty()) {
-          //   tokens.insert(
-          //       tokens.begin() + backupStack.back().index + ++correction,
-          //       {TokenType::TEXT, backupStack.back().marker});
-          //   if (backupStack.back().toErase) {
-          //     tokens.erase(tokens.begin() + backupStack.back().index +
-          //                  --correction);
-          //   }
-          //   backupStack.pop_back();
-          // }
+          FormatCorrections(backupStack, correction);
         }
       } else {
         TOSm1.marker =
@@ -225,17 +204,7 @@ class Tokenizer {
         tokens.insert(tokens.begin() + syntaxStack.back().index + ++correction,
                       {Tokenizer::markerMap[TOS.marker], TOS.marker});
         if (backupStack.size() > 0) {
-          correction = FormatCorrections(backupStack, correction);
-          // while (!backupStack.empty()) {
-          //   tokens.insert(
-          //       tokens.begin() + backupStack.back().index + ++correction,
-          //       {TokenType::TEXT, backupStack.back().marker});
-          //   if (backupStack.back().toErase) {
-          //     tokens.erase(tokens.begin() + backupStack.back().index +
-          //                  --correction);
-          //   }
-          //   backupStack.pop_back();
-          // }
+          FormatCorrections(backupStack, correction);
         }
       }
     }
@@ -247,12 +216,12 @@ class Tokenizer {
       }
       syntaxStack.pop_back();
     }
-    return correction;
   }
 
   void FormatCorrections() {
-    ClearStack();
     int i = -1;
+    int correction = 0;
+    std::deque<Stack> syntaxStack;
     for (const auto& token : tokens) {
       i++;
       if ((token.first < (TokenType)6 && token.first != (TokenType)0) ||
@@ -269,7 +238,7 @@ class Tokenizer {
       return;
     }
 
-    FormatCorrections(syntaxStack);
+    FormatCorrections(syntaxStack, correction);
   }
 
   void PushText() {
@@ -290,7 +259,6 @@ class Tokenizer {
     while ((it + count) != line.end() && *(it + count) == c) {
       count++;
     }
-    // followsWhiteSpace = (*(it + count) == ' ');
     return count;
   }
 };
@@ -305,8 +273,8 @@ int main() {
   // t.tokenizer("**how***bout*zis? where this text?");
   // t.tokenizer("**this should be**** entirely bold**");
   // t.tokenizer("__this should be____entirely bold__");
-  t.tokenizer("__this *should__ be** entirely bold__");
-  // t.tokenizer("__this *should be** entirely bold__");
+  // t.tokenizer("__this *should__ be** entirely bold__");
+  t.tokenizer("__this *should be** entirely bold__");
 
   /* S T A C K
    *
