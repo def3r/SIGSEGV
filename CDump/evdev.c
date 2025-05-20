@@ -14,6 +14,16 @@
 // <libevdev/libevdev.h>
 #include <libevdev-1.0/libevdev/libevdev.h>
 
+// for suspending until an event is encountered
+#include <sys/select.h>
+// Also: select is old fashioned. According to the manual,
+// "modern applications" should not use it because it
+// may not suffice its need. `select` can only hold upto
+// 1024 file descriptors in its set, thus one can not
+// rely on select to monitor more than 1024 fds.
+//
+// Alternative: poll() or epoll()
+
 const size_t BUFSIZE = 100;
 
 struct IntSet {
@@ -24,6 +34,7 @@ struct IntSet {
 int initSet(struct IntSet **set, int capacity);
 int pushSet(struct IntSet *set, int val);
 int dynamicInc(struct IntSet *set);
+int intLen(int n);
 
 int getKbdEvents(struct IntSet **set);
 
@@ -38,8 +49,7 @@ int main() {
   int fds[set->size], fd;
   struct libevdev *devs[set->size];
   for (int i = 0; i < set->size; i++) {
-    // TODO: var len of the string because of eventX
-    snprintf(kbd, 18, "/dev/input/event%d", set->set[i]);
+    snprintf(kbd, 18 + intLen(set->set[i]), "/dev/input/event%d", set->set[i]);
     printf("Opening: %s\n", kbd);
 
     // Open the eventX as any other file and get it an fd
@@ -69,8 +79,47 @@ int main() {
   // This event is what libevdev generalises for us. Making it
   // "type safe"
   struct input_event ev;
+  fd_set fdSet;
+  int maxFd = 0;
   while (1) {
+    // Initialization step as per manual page
+    // Clears all the fds from the set
+    FD_ZERO(&fdSet);
+
     for (int i = 0; i < set->size; i++) {
+      // it adds a fd(here fds[i]) to the set (fdSet)
+      FD_SET(fds[i], &fdSet);
+      if (fds[i] > maxFd)
+        maxFd = fds[i];
+    }
+
+    // This is where the proc will suspend itself and then will
+    // wake up if, either any one of the fd is ready or the
+    // timeout expires.
+    //
+    // In this case, we do not set any Timeout, -> timeout param
+    // is passed NULL. => Indefinite suspension. Will only resume
+    // if an event occurs.
+    //
+    // The set (fdSet) is modified by the select internally. Upon
+    // returning, the set only contains those fds that are ready
+    // and thus we need to initialize the set every time we have
+    // to `select` from the given fds.
+    int ready = select(maxFd + 1, &fdSet, NULL, NULL, NULL);
+    if (ready < 0) {
+      perror("select");
+      exit(1);
+    }
+
+    for (int i = 0; i < set->size; i++) {
+      // if the current fd is not ready, i.e. not in set by select
+      // we continue.
+      //
+      // this checks if the mentioned fd is in the set after
+      // `select` has performed its ops
+      if (!FD_ISSET(fds[i], &fdSet))
+        continue;
+
       // This is neither busy waiting nor it suspends the proc
       // until it recieves any event. It just checks if there
       // has been an event since last checked. Here, we exec it
@@ -79,13 +128,13 @@ int main() {
       //       if event occurred
       //       else
       //       returns -EAGAIN and sets ev to NULL
-      if (libevdev_next_event(devs[i], LIBEVDEV_READ_FLAG_NORMAL, &ev) == 0) {
-        if (ev.type == EV_KEY && ev.value == 1) { // Key press event
-          printf("Key: %s\n", libevdev_event_code_get_name(ev.type, ev.code));
-          if (ev.code == KEY_N && (ev.code & KEY_LEFTCTRL)) {
-            printf("CTRL + N detected!\n");
-            // Fire off your background logic here
-          }
+      if (libevdev_next_event(devs[i], LIBEVDEV_READ_FLAG_NORMAL, &ev) != 0)
+        continue;
+
+      if (ev.type == EV_KEY && ev.value == 1) { // Key press event
+        printf("Key: %s\n", libevdev_event_code_get_name(ev.type, ev.code));
+        if (ev.code == KEY_N && (ev.code & KEY_LEFTCTRL)) {
+          printf("CTRL + N detected!\n");
         }
       }
     }
@@ -214,4 +263,12 @@ int dynamicInc(struct IntSet *set) {
   free(set->set);
   set->set = newArr;
   return 0;
+}
+
+int intLen(int n) {
+  int count = 1;
+  while ((n /= 10) != 0) {
+    count++;
+  }
+  return count;
 }
