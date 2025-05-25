@@ -61,9 +61,24 @@ int main() {
     return 1;
   }
   printf("Found wl-clipboard\n");
-
   printf("primary buffer contains:\n");
-  system("wl-paste -p");
+
+  FILE *fp = popen("wl-paste -p", "r");
+  if (fp == NULL) {
+    perror("popen error");
+    return 1;
+  }
+
+  // BUFSIZ is defined in stdio.h -> default buffer size
+  // 8192
+  char buf[BUFSIZ];
+  while (fgets(buf, BUFSIZ, fp) != NULL)
+    printf("%s\n", buf);
+
+  if (pclose(fp) == -1) {
+    perror("unable to close fp");
+    return 1;
+  }
 
   return 0;
 }
