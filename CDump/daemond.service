@@ -1,0 +1,13 @@
+[Unit]
+Description=Oh no a systemdih Dihmon
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/home/asbestos/Asbestos/SIGSEGV/CDump/daemond.out
+WorkingDirectory=/home/asbestos/Asbestos/SIGSEGV/CDump
+Restart=on-failure
+User=asbestos
+
+[Install]
+WantedBy=default.target
