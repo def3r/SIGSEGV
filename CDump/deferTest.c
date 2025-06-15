@@ -1,3 +1,4 @@
+#define DEFER_IMPLEMENTATION
 #include "defer.h"
 #include <stdlib.h>
 

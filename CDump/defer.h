@@ -22,6 +22,15 @@ struct deferStack {
 
 void initDeferStack(struct deferStack** dStack);
 
+//  Wrapper Fucntions
+// [[[[[[[[[ ]]]]]]]]]
+
+void Close(void* voidFd);
+void CloseVerbose(void* voidFd);
+void Free(void* memloc);
+void FreeVerbose(void* memloc);
+
+#ifdef DEFER_IMPLEMENTATION
 #define DeferSetUp()                      \
   struct deferStack* localDeferStack = 0; \
   initDeferStack(&localDeferStack)
@@ -77,9 +86,6 @@ void initDeferStack(struct deferStack** dStack) {
   }
 }
 
-//  Wrapper Fucntions
-// [[[[[[[[[ ]]]]]]]]]
-
 void Close(void* voidFd) {
   int fd = *(int*)(voidFd);
   close(fd);
@@ -95,5 +101,6 @@ void FreeVerbose(void* memloc) {
   Println("Freed memloc=%p", *(void**)memloc);
   Free(memloc);
 }
+#endif
 
 #endif  // !DEFER_H
