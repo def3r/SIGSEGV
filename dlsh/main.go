@@ -123,6 +123,25 @@ func (dlsh *DLSH) ExecPipe() {
 }
 
 func (dlsh *DLSH) DrainPipeline() {
+	for i, ins := range dlsh.instructions {
+		if ins.state {
+			if err := ins.cmd.Wait(); err != nil {
+				fmt.Println(err.Error())
+			}
+			ins.state = false
+		} else if !ins.isChdir() {
+			continue
+		}
+		if i > 0 && dlsh.instructions[i-1].insType == PIPE {
+			ins.r.Close()
+		}
+		if ins.insType == PIPE {
+			ins.w.Close()
+		}
+	}
+}
+
+func (dlsh *DLSH) DrainExec() {
 	ins := dlsh.ins
 	dlsh.piped = false
 	ins.PipeRead(dlsh.r)
@@ -130,22 +149,7 @@ func (dlsh *DLSH) DrainPipeline() {
 	dlsh.w = os.Stdout
 	if dlsh.err = ins.cmd.Start(); dlsh.err == nil {
 		ins.state = true
-		for i, ins := range dlsh.instructions {
-			if ins.state {
-				if err := ins.cmd.Wait(); err != nil {
-					fmt.Println(err.Error())
-				}
-				ins.state = false
-			} else if !ins.isChdir() {
-				continue
-			}
-			if i > 0 && dlsh.instructions[i-1].insType == PIPE {
-				ins.r.Close()
-			}
-			if ins.insType == PIPE {
-				ins.w.Close()
-			}
-		}
+		dlsh.DrainPipeline()
 	} else {
 		fmt.Println(dlsh.err.Error())
 	}
@@ -193,7 +197,7 @@ func main() {
 			switch ins.insType {
 			case EXEC:
 				if dlsh.piped {
-					dlsh.DrainPipeline()
+					dlsh.DrainExec()
 				} else {
 					if err := cmd.Run(); err != nil {
 						fmt.Println(err.Error())
@@ -201,6 +205,8 @@ func main() {
 				}
 			case PIPE:
 				dlsh.ExecPipe()
+			case WAIT:
+				dlsh.DrainPipeline()
 			}
 
 			if dlsh.err != nil {
@@ -220,7 +226,7 @@ func Tokenize(s *string) []string {
 
 	ignore := strings.Split(" \t", "")
 	noParse := strings.Split("\"`'", "")
-	d := strings.Split("|><", "")
+	d := strings.Split("|><&", "")
 	for i, c := range *s {
 		// TODO:
 		// Implement this using a stack
@@ -242,6 +248,18 @@ func Tokenize(s *string) []string {
 			from = i + 1
 			tokens[len(tokens)-1] = os.ExpandEnv(tokens[len(tokens)-1])
 		} else if slices.Contains(d, string(c)) {
+			if c == '&' {
+				if i+2 < len(*s) && (*s)[i+1] == '&' {
+					if i == from {
+						tokens = append(tokens, "&&")
+					} else {
+						tokens = append(tokens, (*s)[from:i], "&&")
+						tokens[len(tokens)-2] = os.ExpandEnv(tokens[len(tokens)-2])
+					}
+					from = i + 2
+				}
+				continue
+			}
 			if i == from {
 				tokens = append(tokens, string(c))
 			} else {
@@ -270,6 +288,13 @@ func Parse(tokens []string) Instructions {
 		if token == "|" {
 			instruction = newInstruction(tokens[begin], tokens[begin+1:i]...)
 			instruction.insType = PIPE
+			instructions.append(instruction)
+			begin = i + 1
+		} else if token == "&&" {
+			instruction = newInstruction(tokens[begin], tokens[begin+1:i]...)
+			instructions.append(instruction)
+			instruction = newInstruction("", "")
+			instruction.insType = WAIT
 			instructions.append(instruction)
 			begin = i + 1
 		}
