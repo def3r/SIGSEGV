@@ -38,6 +38,20 @@ func NewInstruction(path string, args ...string) *Instruction {
 	return instruction
 }
 
+func (ins *Instruction) Append(arg string) {
+	if ins.Cmd.Path == "" {
+		path, err := exec.LookPath(arg)
+		if err == nil {
+			ins.Cmd.Path = path
+		} else {
+			ins.Cmd.Path = arg
+		}
+		ins.Cmd.Args = []string{arg}
+	} else {
+		ins.Cmd.Args = append(ins.Cmd.Args, arg)
+	}
+}
+
 func (ins *Instruction) PipeRead(r *os.File) {
 	ins.Cmd.Stdin = r
 	ins.R = r
@@ -146,28 +160,53 @@ func Tokenize(s *string) []string {
 	return tokens
 }
 
+func parseToken(instruction *Instruction, tokens []string) int {
+	var i int
+	var err error
+
+	for i = 0; i < len(tokens); i++ {
+		token := tokens[i]
+		if token == "|" {
+			instruction.InsType = PIPE
+			return i
+		} else if token == "&&" {
+			if i != 0 {
+				return i - 1
+			}
+			instruction.InsType = WAIT
+			return i
+		} else if token == ">" {
+			if i == len(tokens) {
+				fmt.Println("Expected string after >")
+				return -1
+			}
+			instruction.W, err = os.Create(tokens[i+1])
+			if err != nil {
+				panic(err)
+			}
+			instruction.Cmd.Stdout = instruction.W
+			i++
+		} else {
+			instruction.Append(token)
+		}
+	}
+	return i
+}
+
 func Parse(tokens []string) Instructions {
 	var instructions Instructions
 	var instruction *Instruction
 
 	begin := 0
-	for i, token := range tokens {
-		if token == "|" {
-			instruction = NewInstruction(tokens[begin], tokens[begin+1:i]...)
-			instruction.InsType = PIPE
-			instructions.Append(instruction)
-			begin = i + 1
-		} else if token == "&&" {
-			instruction = NewInstruction(tokens[begin], tokens[begin+1:i]...)
-			instructions.Append(instruction)
-			instruction = NewInstruction("", "")
-			instruction.InsType = WAIT
-			instructions.Append(instruction)
-			begin = i + 1
+	for i := 0; i < len(tokens) && begin < len(tokens); i++ {
+		instruction = NewInstruction("")
+		i = parseToken(instruction, tokens[begin:])
+		if i < 0 {
+			return instructions
 		}
+		instructions.Append(instruction)
+		begin += i + 1
 	}
-	instruction = NewInstruction(tokens[begin], tokens[begin+1:]...)
-	instructions.Append(instruction)
 
 	return instructions
 }
