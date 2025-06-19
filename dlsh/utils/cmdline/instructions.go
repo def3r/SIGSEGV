@@ -199,7 +199,11 @@ func parseToken(instruction *Instruction, tokens []string) int {
 			instruction.Cmd.Stdin = instruction.R
 			i++
 		} else {
-			instruction.Append(token)
+			if token[0] == '"' && token[len(token)-1] == '"' {
+				instruction.Append(token[1 : len(token)-1])
+			} else {
+				instruction.Append(token)
+			}
 		}
 	}
 	return i
