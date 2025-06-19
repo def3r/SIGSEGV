@@ -19,7 +19,7 @@ const (
 type Instruction struct {
 	InsType InstructionType
 	Cmd     *exec.Cmd
-	R, W    *os.File
+	R, W, E *os.File
 	State   bool
 }
 
@@ -34,6 +34,7 @@ func NewInstruction(path string, args ...string) *Instruction {
 	instruction.Cmd = execCmd
 	instruction.R = os.Stdin
 	instruction.W = os.Stdout
+	instruction.E = os.Stderr
 	instruction.State = false
 	return instruction
 }
@@ -185,6 +186,17 @@ func parseToken(instruction *Instruction, tokens []string) int {
 				panic(err)
 			}
 			instruction.Cmd.Stdout = instruction.W
+			i++
+		} else if token == "<" {
+			if i == len(tokens) {
+				fmt.Println("Expected string after <")
+				return -1
+			}
+			instruction.R, err = os.Open(tokens[i+1])
+			if err != nil {
+				panic(err)
+			}
+			instruction.Cmd.Stdin = instruction.R
 			i++
 		} else {
 			instruction.Append(token)

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"strings"
@@ -13,8 +12,7 @@ import (
 func main() {
 	fmt.Println("$HOME=" + os.Getenv("HOME"))
 
-	scanner := bufio.NewScanner(os.Stdin)
-
+	tty := cl.NewTty()
 	for {
 		cwd, err := os.Getwd()
 		if err != nil {
@@ -22,12 +20,11 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Print(cwd + "> ")
-		if !scanner.Scan() {
-			fmt.Println("Failed to scan")
-			break
-		}
 
-		line := scanner.Text()
+		tty.Raw()
+		line := tty.Read()
+		tty.Restore()
+
 		line = strings.Trim(line, " \t")
 		tokens := cl.Tokenize(&line)
 		fmt.Println(tokens, len(tokens))
