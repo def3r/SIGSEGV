@@ -16,9 +16,43 @@ const (
 	EntireLine    ClearLineMethod = 2
 )
 
+type CliHistory struct {
+	lines []string
+	index uint
+	size  uint
+}
+
+func (hist *CliHistory) Append(line string) {
+	hist.lines = append(hist.lines, line)
+	hist.size = uint(len(hist.lines))
+	hist.index = hist.size - 1
+}
+
+func (hist *CliHistory) PrevLine() string {
+	if hist.index > hist.size || hist.size == 0 {
+		return ""
+	}
+	if hist.index != 0 {
+		hist.index--
+	}
+	return hist.lines[hist.index]
+}
+
+func (hist *CliHistory) NextLine() string {
+	if hist.index > hist.size || hist.size == 0 {
+		return ""
+	}
+	if hist.index < hist.size-1 {
+		hist.index++
+	}
+	return hist.lines[hist.index]
+}
+
 type Tty struct {
 	Inp      *Input
 	Cur      *Cursor
+	hist     *CliHistory
+	lineNum  uint
 	oldState *term.State
 	err      error
 }
@@ -27,6 +61,7 @@ func NewTty() *Tty {
 	tty := new(Tty)
 	tty.Inp = NewInput()
 	tty.Cur = new(Cursor)
+	tty.hist = new(CliHistory)
 	tty.oldState, tty.err = term.GetState(int(os.Stdin.Fd()))
 	if tty.err != nil {
 		fmt.Println(tty.err)
@@ -62,7 +97,12 @@ func (tty *Tty) Read() string {
 
 	input := tty.Inp
 	cursor := tty.Cur
+	exit := false
 	for {
+		cursor.ReflectPos()
+		tty.ClearLine(CursorToEnd)
+		fmt.Printf("%s", input.line)
+
 		cursor.ReflectPosOffsetCol(input.index)
 		cursor.Block()
 
@@ -73,7 +113,14 @@ func (tty *Tty) Read() string {
 
 			switch input.b[2] {
 			case KEY_UP:
-				// fmt.Print(up)
+				if tty.hist.size == 0 {
+					break
+				}
+				if tty.hist.size == tty.lineNum {
+					tty.hist.Append(string(input.line))
+				}
+				input.line = []byte(tty.hist.PrevLine())
+				input.index = uint(len(input.line))
 
 			case KEY_RIGHT:
 				fmt.Print(Right)
@@ -82,7 +129,14 @@ func (tty *Tty) Read() string {
 				}
 
 			case KEY_DOWN:
-				// fmt.Print(down)
+				if tty.hist.size == 0 {
+					break
+				}
+				if tty.hist.size == tty.lineNum {
+					tty.hist.Append(string(input.line))
+				}
+				input.line = []byte(tty.hist.NextLine())
+				input.index = uint(len(input.line))
 
 			case KEY_LEFT:
 				fmt.Print(Left)
@@ -96,8 +150,7 @@ func (tty *Tty) Read() string {
 		switch input.b[0] {
 		case KEY_ENTER:
 			input.Str = string(input.line)
-			fmt.Print("\r\n")
-			return input.Str
+			exit = true
 		case KEY_BACKSPACE:
 			if len(input.line) > 0 && input.index > 0 {
 				input.line = slices.Delete(input.line, int(input.index)-1, int(input.index))
@@ -113,12 +166,19 @@ func (tty *Tty) Read() string {
 			os.Exit(1)
 		}
 
-		cursor.ReflectPos()
-		tty.ClearLine(CursorToEnd)
-		fmt.Printf("%s", input.line)
+		if exit {
+			break
+		}
+
 	}
 
 	fmt.Print("\r\n")
+	if tty.hist.size != tty.lineNum {
+		tty.hist.lines[tty.lineNum] = input.Str
+	} else {
+		tty.hist.Append(input.Str)
+	}
+	tty.lineNum++
 	return input.Str
 }
 
