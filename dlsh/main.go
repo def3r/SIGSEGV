@@ -13,13 +13,9 @@ func main() {
 	fmt.Println("$HOME=" + os.Getenv("HOME"))
 
 	tty := cl.NewTty()
+	tty.GetPrompt()
 	for {
-		cwd, err := os.Getwd()
-		if err != nil {
-			fmt.Println("Failed to get current dir")
-			os.Exit(1)
-		}
-		fmt.Print(cwd + "> ")
+		tty.ReflectPrompt()
 
 		tty.Raw()
 		line := tty.Read()
@@ -38,6 +34,7 @@ func main() {
 				if !ins.Chdir() {
 					break
 				}
+				tty.GetPrompt()
 				if ins.InsType != cl.PIPE {
 					continue
 				}

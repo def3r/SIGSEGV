@@ -222,6 +222,11 @@ func parseToken(instruction *Instruction, tokens []string) int {
 				}
 				if c == '\\' {
 					escapeChar = true
+					continue
+				}
+				if c == '~' {
+					modToken = append(modToken, []rune(os.Getenv("HOME"))...)
+					continue
 				}
 				if stack.IsEmpty() && (c == '"' || c == '\'') {
 					stack.Push(c)

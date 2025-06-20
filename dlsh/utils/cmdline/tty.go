@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 
 	"golang.org/x/term"
 )
@@ -49,6 +50,7 @@ func (hist *CliHistory) NextLine() string {
 }
 
 type Tty struct {
+	Prompt   string
 	Inp      *Input
 	Cur      *Cursor
 	hist     *CliHistory
@@ -184,4 +186,21 @@ func (tty *Tty) Read() string {
 
 func (tty *Tty) ClearLine(cl ClearLineMethod) {
 	fmt.Printf("%s[%dK", ESC, cl)
+}
+
+func (tty *Tty) GetPrompt() {
+	home := os.Getenv("HOME")
+	cwd, err := os.Getwd()
+	if err != nil {
+		fmt.Println("Failed to get current dir")
+		os.Exit(1)
+	}
+	if strings.Index(cwd, home) == 0 {
+		cwd = strings.Replace(cwd, home, "~", 1)
+	}
+	tty.Prompt = cwd + "> "
+}
+
+func (tty *Tty) ReflectPrompt() {
+	fmt.Print(tty.Prompt)
 }
