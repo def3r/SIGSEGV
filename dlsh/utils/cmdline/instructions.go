@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"slices"
 	"strings"
+	"syscall"
 )
 
 type InstructionType uint8
@@ -29,6 +30,9 @@ func NewInstruction(path string, args ...string) *Instruction {
 	execCmd.Stdout = os.Stdout
 	execCmd.Stdin = os.Stdin
 	execCmd.Stderr = os.Stderr
+	execCmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
+	}
 
 	instruction := new(Instruction)
 	instruction.InsType = EXEC

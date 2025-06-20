@@ -1,8 +1,10 @@
 package cmdline
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"syscall"
 )
 
 const (
@@ -69,7 +71,13 @@ func (c *Cursor) GetPos() error {
 	var buf [32]byte
 	n, err := os.Stdin.Read(buf[:])
 	if err != nil {
-		return err
+		if errors.Is(err, syscall.EAGAIN) {
+			fmt.Fprintln(os.Stderr, "[tty not ready for reading]")
+			return err
+		} else {
+			fmt.Fprintf(os.Stderr, "[tty read error: %v]\n", err)
+			return err
+		}
 	}
 
 	_, err = fmt.Sscanf(string(buf[:n]), "\x1b[%d;%dR", &c.row, &c.col)
@@ -81,6 +89,6 @@ func (c *Cursor) GetPos() error {
 
 func (c *Cursor) Reset() {
 	if err := c.GetPos(); err != nil {
-		panic(err)
+		fmt.Println(err)
 	}
 }

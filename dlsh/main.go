@@ -47,9 +47,7 @@ func main() {
 				if dlsh.Piped {
 					dlsh.DrainExec()
 				} else {
-					if err := cmd.Run(); err != nil {
-						fmt.Println(err.Error())
-					}
+					dlsh.Run()
 				}
 			case cl.PIPE:
 				dlsh.ExecPipe()

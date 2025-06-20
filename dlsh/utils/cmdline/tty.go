@@ -3,11 +3,50 @@ package cmdline
 import (
 	"fmt"
 	"os"
+	"os/signal"
 	"slices"
 	"strings"
+	"syscall"
 
+	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 )
+
+// Ioctl Realization: https://github.com/snabb/tcxpgrp
+func TcGetpgrp(fd int) (pgrp int, err error) {
+	return unix.IoctlGetInt(fd, unix.TIOCGPGRP)
+}
+
+func TcSetpgrp(fd int, pgrp int) (err error) {
+	return unix.IoctlSetPointerInt(fd, unix.TIOCSPGRP, pgrp)
+}
+
+func IsForeground() bool {
+	fd, err := unix.Open("/dev/tty", 0666, unix.O_RDONLY)
+	if err != nil {
+		return false
+	}
+	defer unix.Close(fd)
+
+	pgrp1, err := TcGetpgrp(fd)
+	if err != nil {
+		return false
+	}
+	pgrp2 := unix.Getpgrp()
+	return pgrp1 == pgrp2
+}
+
+func SigIgn() {
+	signal.Ignore(syscall.SIGTTOU)
+	signal.Ignore(syscall.SIGTTIN)
+	signal.Ignore(syscall.SIGTSTP)
+}
+
+func SigDfl() {
+	signal.Reset(syscall.SIGTSTP)
+	signal.Reset(syscall.SIGTTIN)
+	signal.Reset(syscall.SIGTTOU)
+}
 
 type ClearLineMethod int8
 
@@ -109,6 +148,9 @@ func (tty *Tty) Read() string {
 		cursor.Block()
 
 		n, err := os.Stdin.Read(input.b[:])
+		if err != nil {
+			fmt.Println("DED\r\n")
+		}
 		if n > 2 && input.b[0] == KEY_ESCAPE && input.b[1] == KEY_OPEN_SQ_BRACKET {
 			// hacks from https://github.com/atomicgo/keyboard
 			// hex := fmt.Sprintf("%x", inp.b[1:n])
