@@ -39,6 +39,7 @@ func main() {
 					continue
 				}
 			} else if cmd.Path == "exit" {
+				tty.DumpHist()
 				return
 			}
 

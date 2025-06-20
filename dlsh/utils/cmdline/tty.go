@@ -1,6 +1,7 @@
 package cmdline
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/signal"
@@ -60,6 +61,7 @@ type CliHistory struct {
 	lines []string
 	index uint
 	size  uint
+	base  uint
 }
 
 func (hist *CliHistory) Append(line string) {
@@ -88,6 +90,46 @@ func (hist *CliHistory) NextLine() string {
 	return hist.lines[hist.index]
 }
 
+func (hist *CliHistory) LoadHist() {
+	fp, err := os.OpenFile(os.Getenv("HOME")+"/.dlshrc", os.O_RDONLY|os.O_CREATE, 0644)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Unable to open ~/.dlshrc")
+		return
+	}
+	defer fp.Close()
+
+	scanner := bufio.NewScanner(fp)
+	for scanner.Scan() {
+		hist.Append(scanner.Text())
+	}
+	if err = scanner.Err(); err != nil {
+		fmt.Fprintf(os.Stderr, "Scanner err: ", err.Error())
+	}
+	hist.base = hist.size
+}
+
+func (hist *CliHistory) DumpHist() {
+	fp, err := os.OpenFile(os.Getenv("HOME")+"/.dlshrc", os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Unable to open ~/.dlshrc: ", err.Error())
+		return
+	}
+	defer fp.Close()
+
+	writer := bufio.NewWriter(fp)
+	for i := hist.base; i < hist.size; i++ {
+		line := hist.lines[i]
+		n, err := writer.WriteString(line + "\n")
+		if err != nil {
+			fmt.Fprintf(
+				os.Stderr, "Unable to write to ~/.dlshrc %d / %d : %s", n, len(line)+1, err.Error(),
+			)
+			return
+		}
+	}
+	writer.Flush()
+}
+
 type Tty struct {
 	Prompt   string
 	Inp      *Input
@@ -98,11 +140,16 @@ type Tty struct {
 	err      error
 }
 
+func (tty *Tty) DumpHist() {
+	tty.hist.DumpHist()
+}
+
 func NewTty() *Tty {
 	tty := new(Tty)
 	tty.Inp = NewInput()
 	tty.Cur = new(Cursor)
 	tty.hist = new(CliHistory)
+	tty.hist.LoadHist()
 	tty.oldState, tty.err = term.GetState(int(os.Stdin.Fd()))
 	if tty.err != nil {
 		fmt.Println(tty.err)
@@ -160,7 +207,7 @@ func (tty *Tty) Read() string {
 				if tty.hist.size == 0 {
 					break
 				}
-				if tty.hist.size == tty.lineNum {
+				if tty.hist.size-tty.hist.base == tty.lineNum {
 					tty.hist.Append(string(input.line))
 				}
 				input.line = []byte(tty.hist.PrevLine())
@@ -176,7 +223,7 @@ func (tty *Tty) Read() string {
 				if tty.hist.size == 0 {
 					break
 				}
-				if tty.hist.size == tty.lineNum {
+				if tty.hist.size-tty.hist.base == tty.lineNum {
 					tty.hist.Append(string(input.line))
 				}
 				input.line = []byte(tty.hist.NextLine())
@@ -217,8 +264,8 @@ func (tty *Tty) Read() string {
 	}
 
 	fmt.Print("\r\n")
-	if tty.hist.size != tty.lineNum {
-		tty.hist.lines[tty.lineNum] = input.Str
+	if tty.hist.size-tty.hist.base != tty.lineNum {
+		tty.hist.lines[tty.hist.base+tty.lineNum] = input.Str
 	} else {
 		tty.hist.Append(input.Str)
 	}
