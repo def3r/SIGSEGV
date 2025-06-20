@@ -1,6 +1,7 @@
 package cmdline
 
 import (
+	ds "dlsh/utils/datastruct"
 	"fmt"
 	"os"
 	"os/exec"
@@ -102,19 +103,28 @@ func Tokenize(s *string) []string {
 	var tokens []string
 	var toParse bool
 	var from int
+	var stack *ds.Stack[rune]
 
 	toParse = true
 	from = 0
+	stack = new(ds.Stack[rune])
 
 	ignore := strings.Split(" \t", "")
-	noParse := strings.Split("\"`'", "")
+	noParse := strings.Split("\"'", "")
 	d := strings.Split("|><&", "")
 	for i, c := range *s {
 		// TODO:
 		// Implement this using a stack
 		if slices.Contains(noParse, string(c)) {
-			toParse = !toParse
-			continue
+			if stack.IsEmpty() || stack.Top() == c {
+				if stack.IsEmpty() {
+					stack.Push(c)
+				} else {
+					stack.Pop()
+				}
+				toParse = !toParse
+				continue
+			}
 		}
 
 		if !toParse {
@@ -199,11 +209,33 @@ func parseToken(instruction *Instruction, tokens []string) int {
 			instruction.Cmd.Stdin = instruction.R
 			i++
 		} else {
-			if token[0] == '"' && token[len(token)-1] == '"' {
-				instruction.Append(token[1 : len(token)-1])
-			} else {
-				instruction.Append(token)
+			// TODO:
+			// Use a String Builder
+			var modToken []rune
+			stack := new(ds.Stack[rune])
+			escapeChar := false
+			for _, c := range token {
+				if escapeChar {
+					escapeChar = false
+					modToken = append(modToken, c)
+					continue
+				}
+				if c == '\\' {
+					escapeChar = true
+				}
+				if stack.IsEmpty() && (c == '"' || c == '\'') {
+					stack.Push(c)
+					continue
+				}
+				if !stack.IsEmpty() && c == stack.Top() {
+					stack.Pop()
+					continue
+				}
+				modToken = append(modToken, c)
 			}
+			token = string(modToken)
+			// fmt.Printf("~%s~\n", token)
+			instruction.Append(token)
 		}
 	}
 	return i

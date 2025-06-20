@@ -28,9 +28,6 @@ func main() {
 		line = strings.Trim(line, " \t")
 		tokens := cl.Tokenize(&line)
 		fmt.Println(tokens, len(tokens))
-		if line == "exit" {
-			break
-		}
 
 		dlsh := eu.NewExecUnit()
 		dlsh.Instructions = cl.Parse(tokens)
@@ -44,6 +41,8 @@ func main() {
 				if ins.InsType != cl.PIPE {
 					continue
 				}
+			} else if cmd.Path == "exit" {
+				return
 			}
 
 			switch ins.InsType {
