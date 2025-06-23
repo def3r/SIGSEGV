@@ -1,0 +1,32 @@
+rm -rf ~/.dlshrc
+ls
+exit
+clear
+exit
+ps
+ls
+which gcc
+exit
+ls
+exit
+ps
+which gcc
+exit
+ls
+clear
+exit
+clear
+git status 0s
+git status ss
+git status -s
+git status 0s
+git status -s
+git add .
+git add . --sparse
+git status -s
+git commit -m "cl history"
+git push
+gh
+clear
+bat
+exit
