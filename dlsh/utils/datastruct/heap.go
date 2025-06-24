@@ -1,8 +1,10 @@
 package datastruct
 
+import "fmt"
+
 type HeapNode[T any] struct {
-	data     T
-	priority uint
+	Data     T
+	Priority uint
 }
 
 type HeapType int8
@@ -14,41 +16,58 @@ const (
 
 type Heap[T any] struct {
 	data     []*HeapNode[T]
+	size     int
+	capacity int
 	heapType HeapType
 }
 
 func (heap *Heap[T]) Size() int {
-	return len(heap.data)
+	return heap.size
 }
 
 func (heap *Heap[T]) Insert(item T, priority uint) {
 	node := new(HeapNode[T])
-	node.data = item
-	node.priority = priority
-	heap.data = append(heap.data, node)
+	node.Data = item
+	node.Priority = priority
 	heap.InsertNode(node)
 }
 
-func (heap *Heap[T]) InsertNode(node *HeapNode[T]) {
-	index := heap.Size() - 1
+func (heap *Heap[T]) InsertNode(node *HeapNode[T]) error {
+	if heap.size != heap.capacity {
+		return fmt.Errorf("Heap.Insert() not possible, size != cap")
+	}
+	heap.data = append(heap.data, node)
+	heap.size = len(heap.data)
+	heap.capacity = heap.size
+	index := heap.size - 1
+
 	switch heap.heapType {
 	case MinHeap:
-		for index > 0 && heap.data[(index-1)/2].priority > heap.data[index].priority {
-			heap.data[index], heap.data[(index-1)/2] = heap.data[(index-1)/2], heap.data[index]
-			index = (index - 1) / 2
-		}
+		heap.restoreMinHeap(index)
 	case MaxHeap:
-		for index > 0 && heap.data[(index-1)/2].priority < heap.data[index].priority {
-			heap.data[index], heap.data[(index-1)/2] = heap.data[(index-1)/2], heap.data[index]
-			index = (index - 1) / 2
-		}
+		heap.restoreMaxHeap(index)
+	}
+	return nil
+}
+
+func (heap *Heap[T]) restoreMinHeap(index int) {
+	for index > 0 && heap.data[(index-1)/2].Priority > heap.data[index].Priority {
+		heap.data[index], heap.data[(index-1)/2] = heap.data[(index-1)/2], heap.data[index]
+		index = (index - 1) / 2
 	}
 }
 
-func (heap *Heap[T]) Heapify(heapType HeapType) {
+func (heap *Heap[T]) restoreMaxHeap(index int) {
+	for index > 0 && heap.data[(index-1)/2].Priority < heap.data[index].Priority {
+		heap.data[index], heap.data[(index-1)/2] = heap.data[(index-1)/2], heap.data[index]
+		index = (index - 1) / 2
+	}
+}
+
+func (heap *Heap[T]) Heapify(heapType HeapType) error {
 	lastNonLeaf := heap.Size()/2 - 1
 	if lastNonLeaf < 0 {
-		return
+		return fmt.Errorf("invalid index %d", lastNonLeaf)
 	}
 
 	switch heapType {
@@ -61,6 +80,7 @@ func (heap *Heap[T]) Heapify(heapType HeapType) {
 			minHeapify(heap, i)
 		}
 	}
+	return nil
 }
 
 func maxHeapify[T any](heap *Heap[T], i int) {
@@ -69,11 +89,11 @@ func maxHeapify[T any](heap *Heap[T], i int) {
 	right := 2*i + 2
 	data := heap.data
 
-	if left < len(data) && data[left].priority > data[largest].priority {
+	if left < heap.size && data[left].Priority > data[largest].Priority {
 		largest = left
 	}
 
-	if right < len(data) && data[right].priority > data[largest].priority {
+	if right < heap.size && data[right].Priority > data[largest].Priority {
 		largest = right
 	}
 
@@ -89,11 +109,11 @@ func minHeapify[T any](heap *Heap[T], i int) {
 	right := 2*i + 2
 	data := heap.data
 
-	if left < len(data) && data[left].priority < data[smallest].priority {
+	if left < heap.size && data[left].Priority < data[smallest].Priority {
 		smallest = left
 	}
 
-	if right < len(data) && data[right].priority < data[smallest].priority {
+	if right < heap.size && data[right].Priority < data[smallest].Priority {
 		smallest = right
 	}
 
@@ -101,4 +121,67 @@ func minHeapify[T any](heap *Heap[T], i int) {
 		heap.data[i], heap.data[smallest] = heap.data[smallest], heap.data[i]
 		minHeapify(heap, smallest)
 	}
+}
+
+func (heap *Heap[T]) Top() (T, error) {
+	var def T
+	if heap.size == 0 {
+		return def, fmt.Errorf("heap size of 0 has no elements")
+	}
+	return heap.data[0].Data, nil
+}
+
+func (heap *Heap[T]) TopPriority() (uint, error) {
+	if heap.size == 0 {
+		return 0, fmt.Errorf("heap size of 0 has no elements")
+	}
+	return heap.data[0].Priority, nil
+}
+
+func (heap *Heap[T]) HasNext() bool {
+	return heap.size > 1
+}
+
+func (heap *Heap[T]) Next() (T, error) {
+	var res T
+
+	if heap.size == 0 || heap.capacity == 0 {
+		return res, fmt.Errorf("heap is empty")
+	} else if heap.size == 1 {
+		return res, fmt.Errorf("heap does not have a Next()")
+	}
+	res = heap.data[0].Data
+	heap.data[0], heap.data[heap.size-1] = heap.data[heap.size-1], heap.data[0]
+	heap.size--
+
+	switch heap.heapType {
+	case MaxHeap:
+		maxHeapify(heap, 0)
+	case MinHeap:
+		minHeapify(heap, 0)
+	}
+	return res, nil
+}
+
+func (heap *Heap[T]) HasPrev() bool {
+	return heap.size < heap.capacity
+}
+
+func (heap *Heap[T]) Prev() (T, error) {
+	var res T
+
+	if !heap.HasPrev() {
+		return res, fmt.Errorf("heap does not have a Prev()")
+	}
+	res = heap.data[0].Data
+	heap.size++
+
+	index := heap.size - 1
+	switch heap.heapType {
+	case MinHeap:
+		heap.restoreMinHeap(index)
+	case MaxHeap:
+		heap.restoreMaxHeap(index)
+	}
+	return res, nil
 }

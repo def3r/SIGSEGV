@@ -1,79 +1,131 @@
 package datastruct
 
+import (
+	"fmt"
+	"slices"
+)
+
 type TrieNode struct {
-	word bool
-	char rune
-	next map[rune]*TrieNode
+	word     bool
+	char     rune
+	parent   *TrieNode
+	children map[rune]*TrieNode
 }
 
 func NewTrieNode(c rune) *TrieNode {
 	trieNode := new(TrieNode)
 	trieNode.char = c
-	trieNode.next = make(map[rune]*TrieNode)
+	trieNode.parent = nil
+	trieNode.children = make(map[rune]*TrieNode)
 	return trieNode
 }
 
-func (trieNode *TrieNode) List(s string, list *[]string) {
-	s = s + string(trieNode.char)
+func (trieNode *TrieNode) List(list *[]*TrieNode) {
 	if trieNode.word {
-		*list = append(*list, s)
+		*list = append(*list, trieNode)
 	}
-	for _, next := range trieNode.next {
-		next.List(s, list)
+	for _, child := range trieNode.children {
+		child.List(list)
 	}
 }
 
 func (trieNode *TrieNode) IsEmpty() bool {
-	return len(trieNode.next) == 0
+	return len(trieNode.children) == 0
+}
+
+func (trieNode *TrieNode) InformChild(r rune) {
+	trieNode.children[r].parent = trieNode
+}
+
+func (trieNode *TrieNode) GetString() string {
+	if !trieNode.word {
+		return "[Error]: TrieNode is not a word"
+	}
+	var s string
+	for trieNode.parent != nil {
+		s = string(trieNode.char) + s
+		trieNode = trieNode.parent
+	}
+	return s
 }
 
 type Trie struct {
-	Root *TrieNode
+	root  *TrieNode
+	pList []*TrieNode
+}
+
+func (trie *Trie) Size() int {
+	return len(trie.pList)
+}
+
+func (trie *Trie) Set(index uint, s string) {
+	node := trie.insertHelper(trie.root, s)
+	// if node != trie.Root {
+	node.word = true
+	trie.pList[index] = node
+	// }
+}
+
+func (trie *Trie) At(index uint) (string, error) {
+	if index < 0 {
+		return "", fmt.Errorf("Invalid index: %d", index)
+	} else if index >= uint(len(trie.pList)) {
+		return "", fmt.Errorf("Cannot access list index %d of size %d", index, len(trie.pList))
+	}
+	return trie.pList[index].GetString(), nil
 }
 
 func NewTrie() *Trie {
 	trie := new(Trie)
-	trie.Root = NewTrieNode(' ')
+	trie.root = NewTrieNode(' ')
 	return trie
 }
 
 func (trie *Trie) Insert(s string) {
-	node := trie.Root
+	node := trie.insertHelper(trie.root, s)
+	// if node != trie.Root {
+	node.word = true
+	trie.pList = append(trie.pList, node)
+	// }
+}
 
+func (trie *Trie) insertHelper(node *TrieNode, s string) *TrieNode {
 	for _, c := range s {
-		if next, exists := node.next[c]; exists {
-			node = next
+		if child, exists := node.children[c]; exists {
+			node = child
 			continue
 		}
-		node.next[c] = NewTrieNode(c)
-		node = node.next[c]
+		node.children[c] = NewTrieNode(c)
+		node.InformChild(c)
+		node = node.children[c]
 	}
-	if node != trie.Root {
-		node.word = true
-	}
+	return node
 }
 
 func (trie *Trie) IsEmpty() bool {
-	return trie.Root.IsEmpty()
+	return trie.root.IsEmpty()
 }
 
 func (trie *Trie) Delete(s string) {
-	trieDelHelper(trie.Root, s, 0)
+	trieDelHelper(trie, trie.root, s, 0)
 }
 
-func trieDelHelper(trieNode *TrieNode, s string, depth int) *TrieNode {
+func trieDelHelper(trie *Trie, trieNode *TrieNode, s string, depth int) *TrieNode {
 	if len(s) == 0 {
 		trieNode.word = false
+		trie.pList = slices.DeleteFunc(trie.pList, func(item *TrieNode) bool {
+			return item == trieNode
+		})
 		if trieNode.IsEmpty() {
 			trieNode = nil
 		}
 		return trieNode
 	}
 
-	if next, exists := trieNode.next[rune(s[0])]; exists {
-		next = trieDelHelper(next, s[1:], depth+1)
-		if next == nil {
-			delete(trieNode.next, rune(s[0]))
+	if child, exists := trieNode.children[rune(s[0])]; exists {
+		child = trieDelHelper(trie, child, s[1:], depth+1)
+		if child == nil {
+			delete(trieNode.children, rune(s[0]))
 		}
 		if trieNode.IsEmpty() && !trieNode.word {
 			trieNode = nil
@@ -82,26 +134,36 @@ func trieDelHelper(trieNode *TrieNode, s string, depth int) *TrieNode {
 	return trieNode
 }
 
-func (trie *Trie) Search(s string) []string {
-	node := trie.Root
-	sug := []string{}
+func (trie *Trie) Search(s string) *Heap[*TrieNode] {
+	if s == "" {
+		return nil
+	}
+	node := trie.root
+	nodes := []*TrieNode{}
+	pq := new(Heap[*TrieNode])
 
 	for _, c := range s {
-		if next, exists := node.next[c]; exists {
-			node = next
+		if child, exists := node.children[c]; exists {
+			node = child
 			continue
 		} else {
-			return sug
+			return pq
 		}
 	}
-	node.List(s[:len(s)-1], &sug)
-	return sug
+
+	node.List(&nodes)
+	for priority, ptr := range trie.pList {
+		if slices.Index(nodes, ptr) != -1 {
+			pq.Insert(ptr, uint(priority))
+		}
+	}
+	return pq
 }
 
-func (trie *Trie) List() []string {
-	list := []string{}
-	for _, next := range trie.Root.next {
-		next.List("", &list)
+func (trie *Trie) List() *[]*TrieNode {
+	nodes := new([]*TrieNode)
+	for _, child := range trie.root.children {
+		child.List(nodes)
 	}
-	return list
+	return nodes
 }
