@@ -86,15 +86,19 @@ func NewCliHistory() *CliHistory {
 func (hist *CliHistory) Append(line string) {
 	hist.trie.Insert(line)
 	hist.size = uint(hist.trie.Size())
-	hist.index = hist.size - 1
+	hist.index = hist.size
 }
 
 func (hist *CliHistory) PrevLine() (string, error) {
 	if hist.index > hist.size || hist.size == 0 {
 		return "", fmt.Errorf("Invalid index: %d", hist.index)
 	}
+	prevNode := hist.trie.NodeAt(hist.index)
 	if hist.index != 0 {
 		hist.index--
+		if prevNode == hist.trie.NodeAt(hist.index) {
+			return hist.PrevLine()
+		}
 	}
 	return hist.trie.At(hist.index)
 }
@@ -103,8 +107,12 @@ func (hist *CliHistory) NextLine() (string, error) {
 	if hist.index > hist.size || hist.size == 0 {
 		return "", fmt.Errorf("Invalid index: %d", hist.index)
 	}
-	if hist.index < hist.size-1 {
+	prevNode := hist.trie.NodeAt(hist.index)
+	if hist.index < hist.size {
 		hist.index++
+		if prevNode == hist.trie.NodeAt(hist.index) {
+			return hist.NextLine()
+		}
 	}
 	return hist.trie.At(hist.index)
 }
@@ -333,11 +341,7 @@ func (tty *Tty) Read() string {
 	cursor.ReflectPos()
 	tty.ClearLine(CursorToEnd)
 	fmt.Printf("%s\r\n", input.line)
-	if tty.hist.size-tty.hist.base != tty.lineIdx {
-		tty.hist.trie.Set(tty.hist.base+tty.lineIdx, input.Str)
-	} else {
-		tty.hist.Append(input.Str)
-	}
+	tty.hist.Append(input.Str)
 	tty.lineIdx++
 	return input.Str
 }

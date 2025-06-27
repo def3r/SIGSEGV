@@ -12,6 +12,11 @@ type TrieNode struct {
 	children map[rune]*TrieNode
 }
 
+type Trie struct {
+	root  *TrieNode
+	pList []*TrieNode
+}
+
 func NewTrieNode(c rune) *TrieNode {
 	trieNode := new(TrieNode)
 	trieNode.char = c
@@ -49,11 +54,6 @@ func (trieNode *TrieNode) GetString() string {
 	return s
 }
 
-type Trie struct {
-	root  *TrieNode
-	pList []*TrieNode
-}
-
 func (trie *Trie) Size() int {
 	return len(trie.pList)
 }
@@ -69,10 +69,21 @@ func (trie *Trie) Set(index uint, s string) {
 func (trie *Trie) At(index uint) (string, error) {
 	if index < 0 {
 		return "", fmt.Errorf("Invalid index: %d", index)
-	} else if index >= uint(len(trie.pList)) {
+	} else if index > uint(len(trie.pList)) {
 		return "", fmt.Errorf("Cannot access list index %d of size %d", index, len(trie.pList))
+	} else if index == uint(len(trie.pList)) {
+		return "", nil
 	}
 	return trie.pList[index].GetString(), nil
+}
+
+func (trie *Trie) NodeAt(index uint) *TrieNode {
+	if index < 0 {
+		return nil
+	} else if index >= uint(len(trie.pList)) {
+		return nil
+	}
+	return trie.pList[index]
 }
 
 func NewTrie() *Trie {
@@ -83,10 +94,8 @@ func NewTrie() *Trie {
 
 func (trie *Trie) Insert(s string) {
 	node := trie.insertHelper(trie.root, s)
-	// if node != trie.Root {
 	node.word = true
 	trie.pList = append(trie.pList, node)
-	// }
 }
 
 func (trie *Trie) insertHelper(node *TrieNode, s string) *TrieNode {
@@ -152,8 +161,10 @@ func (trie *Trie) Search(s string) *Heap[*TrieNode] {
 	}
 
 	node.List(&nodes)
+	var prev *TrieNode
 	for priority, ptr := range trie.pList {
-		if slices.Index(nodes, ptr) != -1 {
+		if prev != ptr && slices.Index(nodes, ptr) != -1 {
+			prev = ptr
 			pq.Insert(ptr, uint(priority))
 		}
 	}
