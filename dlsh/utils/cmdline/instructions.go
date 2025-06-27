@@ -24,6 +24,7 @@ type Instruction struct {
 	R, W, E *os.File
 	State   bool
 }
+type Instructions []*Instruction
 
 func NewInstruction(path string, args ...string) *Instruction {
 	execCmd := exec.Command(path, args...)
@@ -86,21 +87,8 @@ func (ins *Instruction) Chdir() bool {
 	return true
 }
 
-type Instructions []*Instruction
-
 func (inss *Instructions) Append(ins *Instruction) {
 	*inss = append(*inss, ins)
-}
-
-type InstructionExec struct {
-	insType InstructionType
-	cmd     *exec.Cmd
-}
-
-type InstructionPipe struct {
-	insType InstructionType
-	cmd     *exec.Cmd
-	r, w    *os.File
 }
 
 func Tokenize(s *string) []string {

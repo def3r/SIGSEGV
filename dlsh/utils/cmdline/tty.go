@@ -14,6 +14,33 @@ import (
 	"golang.org/x/term"
 )
 
+type ClearLineMethod int8
+
+const (
+	CursorToEnd   ClearLineMethod = 0
+	CursorToStart ClearLineMethod = 1
+	EntireLine    ClearLineMethod = 2
+)
+
+type CliHistory struct {
+	trie  *ds.Trie
+	buf   string
+	index uint
+	size  uint
+	base  uint
+}
+
+type Tty struct {
+	Prompt   string
+	Inp      *Input
+	Cur      *Cursor
+	hist     *CliHistory
+	lineIdx  uint
+	sugg     *ds.Heap[*ds.TrieNode]
+	oldState *term.State
+	err      error
+}
+
 // Ioctl Realization: https://github.com/snabb/tcxpgrp
 func TcGetpgrp(fd int) (pgrp int, err error) {
 	return unix.IoctlGetInt(fd, unix.TIOCGPGRP)
@@ -48,22 +75,6 @@ func SigDfl() {
 	signal.Reset(syscall.SIGTSTP)
 	signal.Reset(syscall.SIGTTIN)
 	signal.Reset(syscall.SIGTTOU)
-}
-
-type ClearLineMethod int8
-
-const (
-	CursorToEnd   ClearLineMethod = 0
-	CursorToStart ClearLineMethod = 1
-	EntireLine    ClearLineMethod = 2
-)
-
-type CliHistory struct {
-	trie  *ds.Trie
-	buf   []byte
-	index uint
-	size  uint
-	base  uint
 }
 
 func NewCliHistory() *CliHistory {
@@ -141,17 +152,6 @@ func (hist *CliHistory) DumpHist() {
 		}
 	}
 	writer.Flush()
-}
-
-type Tty struct {
-	Prompt   string
-	Inp      *Input
-	Cur      *Cursor
-	hist     *CliHistory
-	lineIdx  uint
-	sugg     *ds.Heap[*ds.TrieNode]
-	oldState *term.State
-	err      error
 }
 
 func (tty *Tty) DumpHist() {
@@ -237,14 +237,8 @@ func (tty *Tty) Read() string {
 				if hist.size == 0 {
 					break
 				}
-				// if hist.size-hist.base == tty.lineNum {
-				// 	hist.Append(string(input.line))
 				if hist.index-hist.base == tty.lineIdx {
-					hist.buf = slices.Clone(input.line)
-					// s, _ := hist.trie.At(hist.index)
-					// if s != string(input.line) {
-					// 	hist.trie.Set(hist.index, string(input.line))
-					// }
+					hist.buf = string(input.line)
 				}
 
 				var pline string
@@ -279,23 +273,22 @@ func (tty *Tty) Read() string {
 			case KEY_DOWN:
 				hist := tty.hist
 				if hist.size == 0 || hist.index == hist.size {
-					// fmt.Println("\r\nBoom\r\n", hist.index, hist.size)
 					break
 				}
 
 				var nline string
-				if hist.index-hist.base == tty.lineIdx-1 {
-					hist.index++
-				} else if tty.sugg != nil && tty.sugg.Size() > 0 {
+				if tty.sugg != nil && tty.sugg.Size() > 0 {
 					if tty.sugg.HasPrev() {
 						tty.sugg.Prev()
 						top, _ := tty.sugg.Top()
 						hist.index, _ = tty.sugg.TopPriority()
 						nline = top.GetString()
-					} else if hist.index != hist.size-1 {
-						nline = string(hist.buf)
+					} else {
+						nline = hist.buf
 						hist.index = hist.size
 					}
+				} else if hist.index-hist.base == tty.lineIdx-1 {
+					hist.index++
 				} else {
 					nline, _ = hist.NextLine()
 				}
@@ -337,10 +330,10 @@ func (tty *Tty) Read() string {
 		tty.sugg = tty.hist.trie.Search(string(input.line))
 	}
 
-	fmt.Print("\r\n")
+	cursor.ReflectPos()
+	tty.ClearLine(CursorToEnd)
+	fmt.Printf("%s\r\n", input.line)
 	if tty.hist.size-tty.hist.base != tty.lineIdx {
-		// TODO:
-		// Erase the pseudo string inside the trie
 		tty.hist.trie.Set(tty.hist.base+tty.lineIdx, input.Str)
 	} else {
 		tty.hist.Append(input.Str)
