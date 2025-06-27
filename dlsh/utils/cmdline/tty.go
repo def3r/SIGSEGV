@@ -9,7 +9,9 @@ import (
 	"strings"
 	"syscall"
 
+	"dlsh/utils/ansi"
 	ds "dlsh/utils/datastruct"
+	key "dlsh/utils/keys"
 	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 )
@@ -214,14 +216,13 @@ func (tty *Tty) Suggest() {
 	if top, err = tty.sugg.Top(); err != nil {
 		return
 	}
-	fmt.Print("\033[2m")
-	fmt.Print(top.GetString()[len(tty.Inp.line):])
-	fmt.Print("\033[0m")
+	fmt.Print(
+		ansi.Dim + top.GetString()[tty.Inp.Len():] + ansi.Reset,
+	)
 }
 
 func (tty *Tty) Read() string {
 	tty.Reset()
-
 	input := tty.Inp
 	cursor := tty.Cur
 	exit := false
@@ -238,86 +239,17 @@ func (tty *Tty) Read() string {
 		if err != nil {
 			fmt.Println("DED\r\n")
 		}
-		if n > 2 && input.b[0] == KEY_ESCAPE && input.b[1] == KEY_OPEN_SQ_BRACKET {
-			switch input.b[2] {
-			case KEY_UP:
-				hist := tty.hist
-				if hist.size == 0 {
-					break
-				}
-				if hist.index-hist.base == tty.lineIdx {
-					hist.buf = string(input.line)
-				}
-
-				var pline string
-				if tty.sugg != nil && tty.sugg.Size() > 0 {
-					if !tty.sugg.HasNext() {
-						break
-					}
-					tty.sugg.Next()
-					top, _ := tty.sugg.Top()
-					hist.index, _ = tty.sugg.TopPriority()
-					pline = top.GetString()
-				} else {
-					if hist.index == hist.size && len(input.line) != 0 {
-						break
-					}
-					pline, _ = hist.PrevLine()
-				}
-				input.line = []byte(pline)
-				input.index = uint(len(input.line))
-
-			case KEY_RIGHT:
-				fmt.Print(Right)
-				if input.index == uint(len(input.line)) &&
-					tty.sugg != nil && tty.sugg.Size() > 0 {
-					top, _ := tty.sugg.Top()
-					input.line = []byte(top.GetString())
-					input.index = uint(len(input.line))
-				} else if input.index < uint(len(input.line)) {
-					input.index++
-				}
-
-			case KEY_DOWN:
-				hist := tty.hist
-				if hist.size == 0 || hist.index == hist.size {
-					break
-				}
-
-				var nline string
-				if tty.sugg != nil && tty.sugg.Size() > 0 {
-					if tty.sugg.HasPrev() {
-						tty.sugg.Prev()
-						top, _ := tty.sugg.Top()
-						hist.index, _ = tty.sugg.TopPriority()
-						nline = top.GetString()
-					} else {
-						nline = hist.buf
-						hist.index = hist.size
-					}
-				} else if hist.index-hist.base == tty.lineIdx-1 {
-					hist.index++
-				} else {
-					nline, _ = hist.NextLine()
-				}
-				input.line = []byte(nline)
-				input.index = uint(len(input.line))
-
-			case KEY_LEFT:
-				fmt.Print(Left)
-				if input.index > 0 {
-					input.index--
-				}
-			}
+		if n > 2 && input.b[0] == key.Escape && input.b[1] == key.OpenSqBracket {
+			tty.HandleArrowKeys()
 			continue
 		}
 
 		switch input.b[0] {
-		case KEY_ENTER:
-			input.Str = string(input.line)
+		case key.Enter:
+			input.Str()
 			exit = true
-		case KEY_BACKSPACE:
-			if len(input.line) > 0 && input.index > 0 {
+		case key.Backspace:
+			if input.Len() > 0 && input.index > 0 {
 				input.line = slices.Delete(input.line, int(input.index)-1, int(input.index))
 				input.index--
 			}
@@ -341,13 +273,87 @@ func (tty *Tty) Read() string {
 	cursor.ReflectPos()
 	tty.ClearLine(CursorToEnd)
 	fmt.Printf("%s\r\n", input.line)
-	tty.hist.Append(input.Str)
+	tty.hist.Append(input.str)
 	tty.lineIdx++
-	return input.Str
+	return input.str
+}
+
+func (tty *Tty) HandleArrowKeys() {
+	input := tty.Inp
+	switch input.b[2] {
+	case key.Up:
+		hist := tty.hist
+		if hist.size == 0 {
+			break
+		}
+		if hist.index-hist.base == tty.lineIdx {
+			hist.buf = input.Str()
+		}
+
+		var pline string
+		if tty.sugg != nil && tty.sugg.Size() > 0 {
+			if !tty.sugg.HasNext() {
+				break
+			}
+			tty.sugg.Next()
+			top, _ := tty.sugg.Top()
+			hist.index, _ = tty.sugg.TopPriority()
+			pline = top.GetString()
+		} else {
+			if hist.index == hist.size && input.Len() != 0 {
+				break
+			}
+			pline, _ = hist.PrevLine()
+		}
+		input.line = []byte(pline)
+		input.index = uint(input.Len())
+
+	case key.Down:
+		hist := tty.hist
+		if hist.size == 0 || hist.index == hist.size {
+			break
+		}
+
+		var nline string
+		if tty.sugg != nil && tty.sugg.Size() > 0 {
+			if tty.sugg.HasPrev() {
+				tty.sugg.Prev()
+				top, _ := tty.sugg.Top()
+				hist.index, _ = tty.sugg.TopPriority()
+				nline = top.GetString()
+			} else {
+				nline = hist.buf
+				hist.index = hist.size
+			}
+		} else if hist.index-hist.base == tty.lineIdx-1 {
+			hist.index++
+		} else {
+			nline, _ = hist.NextLine()
+		}
+		input.line = []byte(nline)
+		input.index = uint(input.Len())
+
+	case key.Left:
+		fmt.Print(ansi.Left)
+		if input.index > 0 {
+			input.index--
+		}
+
+	case key.Right:
+		fmt.Print(ansi.Right)
+		if input.index == uint(input.Len()) &&
+			tty.sugg != nil && tty.sugg.Size() > 0 {
+			top, _ := tty.sugg.Top()
+			input.line = []byte(top.GetString())
+			input.index = uint(input.Len())
+		} else if input.index < uint(input.Len()) {
+			input.index++
+		}
+	}
 }
 
 func (tty *Tty) ClearLine(cl ClearLineMethod) {
-	fmt.Printf("%s[%dK", ESC, cl)
+	fmt.Printf("%s[%dK", ansi.Esc, cl)
 }
 
 func (tty *Tty) GetPrompt() {
