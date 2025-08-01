@@ -36,6 +36,8 @@ int main(int argc, char *argv[]) {
     error("Error opening socket");
   }
 
+  // bzero sucks, memset rocks
+  // https://stackoverflow.com/questions/17096990/why-use-bzero-over-memset
   bzero((char *)&servAddr, sizeof(servAddr));
   portno = atoi(argv[1]);
 
