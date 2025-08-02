@@ -8,10 +8,19 @@
 #include <wayland-client-protocol.h>
 #include <wayland-client.h>
 
-// [NOTE:] WAYLAND OBJECTS ARE NOT REAL! THEY'RE A HOAX!
+// X KeyBoard Scancodes
+#include <xkbcommon/xkbcommon.h>
+
+// NOTE: WAYLAND OBJECTS ARE NOT REAL! THEY'RE A HOAX!
 // THEY STORE NOTHING AND HAVE COMPLETELY OPAQUE struct {};
 // YOU ARE ONLY SUPPOSED TO USE EM AS ptrs AND NOT CARE
 // WHATS INSIDE EM!
+
+// TODO: clipboard protocols
+// What i have:
+//    zwp_primary_selection_device_manager_v1
+//    zwlr_data_control_manager_v1
+//    wl_data_device_manager
 
 // Thankfully there exist some good resources
 // https://jan.newmarch.name/Wayland/ProgrammingClient/
@@ -47,10 +56,26 @@
 // It provides an abstraction over input events on Wayland
 // So, a seat can be imagined as a literal seat where the user sits and operates
 // the computer, and have upto 1 keyboard and 1 ptr dev
-//
+// wl_seat -> group of i/p devices assoc with a single user session
+// The server sends a `capabilities` event to signal what kind of i/p devices
+// are supported by this seat. Client can bind to any of the i/p devices it
+// wishes.
 
 struct wl_compositor *compositor = NULL;
-struct wl_data_device_manageer *devmgr = NULL;
+struct wl_data_device_manager *devmgr = NULL;
+struct wl_seat *seat = NULL;
+
+static void wl_seat_capabilities(void *data, struct wl_seat *wl_seat,
+                                 uint32_t capabilities) {
+  struct client_state *state = data;
+  // TODO:
+}
+static void wl_seat_name(void *data, struct wl_seat *wl_seat,
+                         const char *name) {
+  fprintf(stderr, "seat name %s\n", name);
+}
+static const struct wl_seat_listener wl_seat_listener = {
+    .capabilities = wl_seat_capabilities, .name = wl_seat_name};
 
 // wl_registry_bind
 // Binding is the process of taking a known object and assigning an ID to
@@ -66,6 +91,9 @@ void globalRegHandler(void *data, struct wl_registry *registry, uint32_t id,
   } else if (strcmp(interface, "wl_data_device_manager") == 0) {
     devmgr = wl_registry_bind(registry, id, &wl_data_device_manager_interface,
                               version);
+  } else if (strcmp(interface, wl_seat_interface.name) == 0) {
+    seat = wl_registry_bind(registry, id, &wl_seat_interface, version);
+    wl_seat_add_listener(seat, &wl_seat_listener, NULL);
   }
 }
 
