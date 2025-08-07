@@ -33,7 +33,8 @@ VALUES
 (2, 'John Dih', 'York', 300),
 (3, 'Jane Doe', 'Yorkshire', 5000),
 (4, 'Jane Dih', 'Yorkland', 100),
-(5, 'John Jane', 'York DC', 50);
+(5, 'John Jane', 'York DC', 50),
+(6, 'Johnny Jane', 'Paris', 40);
 
 INSERT INTO Customer
 VALUES
@@ -50,3 +51,6 @@ VALUES
 (3, 400, make_date(1989, 7, 14), 5, 2),
 (4, 500, make_date(2089, 7, 14), 2, 1),
 (5, 600, make_date(2189, 7, 14), 5, 1);
+
+SELECT name, city FROM Salesman WHERE city == 'Paris';
+SELECT salesman_id, name FROM Salesman WHERE commission >= 50;
