@@ -1,0 +1,6 @@
+**
+!Makefile
+!Kbuild
+# !compile_commands.json or use $(bear -- make)
+!docsEnhancement.txt
+!.gitignore

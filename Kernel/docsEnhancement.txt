@@ -1,0 +1,1 @@
+1. charDevice.o: error: objtool: init_module(): Magic init_module() function name is deprecated, use module_init(fn) instead

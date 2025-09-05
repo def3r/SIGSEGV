@@ -1,0 +1,11 @@
+EXTRA_CFLAGS = -Wall -Wextra
+
+# creates a kernel module (ko - kernel object) starting from charDevice.o
+# charDevice.o created using charDevice.c or .S
+obj-m  			 = charDevice.o
+# supermodule-y = module-a.o module-b.o 
+
+# The suffix (-m or -y) mean something:
+# 		M (modules) target for loadable kernel modules
+# 		Y (yes) 		represents target obj file to be compiled then
+# 								linked to a module or within the kernel (obj-y)
