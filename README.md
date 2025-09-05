@@ -1,3 +1,13 @@
+Dir Naming Convention:
+
+| Dir Naming | Convention |
+| :--------- | :--------- |
+| *`UPPERCASE`* | College Course work |
+| *`lowercase`* | Toy Implementation Project |
+| *`CapitalCamelCase`* | Recreational Programming |
+
+---
+
 > [!IMPORTANT]
 > *`Quick List:`*
 
