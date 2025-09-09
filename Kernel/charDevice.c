@@ -195,9 +195,12 @@ int module_initialize(void) {
 
 void module_clean(void) {
   int i;
-  for (i = 0; i < MY_MAX_MINORS; i++)
+  for (i = 0; i < MY_MAX_MINORS; i++) {
     cdev_del(&devs[i].cdev);
+    device_destroy(mychardev_class, MKDEV(MY_MAJOR, i));
+  }
   unregister_chrdev_region(MKDEV(MY_MAJOR, 0), MY_MAX_MINORS);
+  class_destroy(mychardev_class);
   printk("my driver removed from your kernel!\n");
 }
 
