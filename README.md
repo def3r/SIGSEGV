@@ -11,6 +11,7 @@ Dir Naming Convention:
 > [!IMPORTANT]
 > *`Quick List:`*
 
+- [Driver for kernel space ring buffer](https://github.com/def3r/Segmentation-Fault-Dump/tree/main/Kernel/ringBfr)
 - [dbg.h](https://github.com/horrifyingHorse/cp/blob/main/dbg.h)
 - [wayland's clipboard](https://github.com/horrifyingHorse/Segmentation-Fault-Dump/blob/main/CDump/way2land.c)
 - [Legacy dlsh](https://github.com/horrifyingHorse/Segmentation-Fault-Dump/tree/main/dlsh)
