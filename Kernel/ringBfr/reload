@@ -1,0 +1,4 @@
+sudo rmmod ringBfr
+make
+sudo insmod ringBfr.ko
+ls -l /dev/def3r-*

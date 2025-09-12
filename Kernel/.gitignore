@@ -5,5 +5,4 @@
 !docsEnhancement.txt
 !.gitignore
 !charDevice.c
-!cQueue/
-!cQueue.c
+!ringBfr/
