@@ -42,3 +42,9 @@ func (c *Col) Render(s *Screen) {
 		child.Render(s)
 	}
 }
+
+func (c *Col) Wrap() {
+	for _, child := range c.children {
+		child.Wrap()
+	}
+}

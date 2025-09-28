@@ -5,4 +5,5 @@ type Box interface {
 	GetHeight() int
 	Place(int, int)
 	Render(*Screen)
+	Wrap()
 }

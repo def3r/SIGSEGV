@@ -11,7 +11,7 @@ func NewScreen(width, height int, fill bool) *Screen {
 	s.screen = make([][]rune, height)
 	var fRune rune
 	if fill {
-		fRune = '.'
+		fRune = '░'
 	} else {
 		fRune = ' '
 	}

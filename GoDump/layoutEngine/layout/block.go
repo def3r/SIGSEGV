@@ -37,3 +37,7 @@ func (b *Block) Render(s *Screen) {
 		}
 	}
 }
+
+func (b *Block) Wrap() {
+	return
+}
