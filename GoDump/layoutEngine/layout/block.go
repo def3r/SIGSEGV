@@ -28,3 +28,12 @@ func (b *Block) Place(x0, y0 int) {
 	b.x0 = x0
 	b.y0 = y0
 }
+
+func (b *Block) Render(s *Screen) {
+	fill := s.getFill()
+	for h := range b.height {
+		for w := range b.width {
+			s.screen[b.y0+h][b.x0+w] = fill
+		}
+	}
+}

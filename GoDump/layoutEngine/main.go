@@ -11,16 +11,17 @@ import (
 // https://third-bit.com/sdxjs/layout-engine/
 
 func main() {
-	b1 := layout.NewBlock(10, 5)
-	fmt.Printf("Block1(%d, %d)\n", b1.GetWidth(), b1.GetHeight())
-	b2 := layout.NewBlock(5, 5)
-	fmt.Printf("Block2(%d, %d)\n", b2.GetWidth(), b2.GetHeight())
+	a := layout.NewBlock(5, 5)
+	b := layout.NewBlock(4, 4)
+	c := layout.NewBlock(2, 2)
+	col := layout.NewCol([]layout.Box{b, c})
+	d := layout.NewBlock(1, 1)
 
-	children := []layout.Box{b1, b2}
-
+	children := []layout.Box{a, col, d}
 	row := layout.NewRow(children)
-	fmt.Printf("Row(%d, %d)\n", row.GetWidth(), row.GetHeight())
+	row.Place(1, 1)
 
-	col := layout.NewCol(children)
-	fmt.Printf("Col(%d, %d)\n", col.GetWidth(), col.GetHeight())
+	s := layout.NewScreen(20, 10, false)
+	s.Render(row)
+	fmt.Print(s.Flush())
 }

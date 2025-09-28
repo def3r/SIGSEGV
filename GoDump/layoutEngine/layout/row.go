@@ -39,3 +39,9 @@ func (r *Row) Place(x0, y0 int) {
 		wOffset += child.GetWidth()
 	}
 }
+
+func (r *Row) Render(s *Screen) {
+	for _, child := range r.children {
+		child.Render(s)
+	}
+}
