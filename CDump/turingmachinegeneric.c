@@ -26,9 +26,26 @@
     v->arr[v->len++] = c;                                                      \
   }
 
+#define VectorFind(v, c, exists)                                               \
+  if (v != NULL) {                                                             \
+    exists = false;                                                            \
+    for (int i = 0; i < v->len; i++) {                                         \
+      if (v->arr[i] == c) {                                                    \
+        exists = true;                                                         \
+        break;                                                                 \
+      }                                                                        \
+    }                                                                          \
+  }
+
+#define ExtractStr(val)                                                        \
+  val += val[0] == '\'';                                                       \
+  if (val[strlen(val) - 1] == '\'') {                                          \
+    val[strlen(val) - 1] = '\0';                                               \
+  }
+
 extern int errno;
 
-enum Dir { LEFT = -1, RIGHT = 1, NOMOVE = 0, SAME };
+enum Dir { LEFT = -1, RIGHT = 1, NOMOVE = 0, SAME = 2 };
 
 // clang-format off
 
@@ -65,8 +82,12 @@ typedef struct {
 
 typedef struct {
   uint16_t           numStates;
+  uint16_t           curState;
+  uint16_t           initState;
+  enum Dir           dir;
   char               blankSymbol;
-  char               initState;
+  char              *tape;
+  char              *head;
   charVector        *inputSymbols;
   charVector        *tapeSymbols;
   intVector         *finalStates;
@@ -83,6 +104,7 @@ turingMachine *makeTuringMachine() {
     return NULL;
   memset(tm, 0, sizeof(turingMachine));
   tm->blankSymbol = 'B';
+  tm->tape = "";
   MakeVector(transitionVector, tm->transitions);
   return tm;
 }
@@ -189,10 +211,7 @@ char *parseMacInfo(FILE *f) {
     char *val = ++c;
 
     if (strcmp(var, "blanksymbol") == 0) {
-      val += val[0] == '\'';
-      if (val[strlen(val) - 1] == '\'') {
-        val[strlen(val) - 1] = '\0';
-      }
+      ExtractStr(val);
       if (strlen(val) > 0)
         tm->blankSymbol = val[0];
 
@@ -266,6 +285,13 @@ char *parseMacInfo(FILE *f) {
     } else if (strcmp(var, "initialstate") == 0) {
       tm->initState = atoi(val);
 
+    } else if (strcmp(var, "tape") == 0) {
+      ExtractStr(val);
+      if (strlen(val) > 0) {
+        tm->tape = malloc(strlen(val));
+        memcpy(tm->tape, val, strlen(val));
+      }
+
     } else {
       printf("%s\t\t%s\n", var, val);
     }
@@ -318,16 +344,23 @@ char *parseTransition(FILE *f) {
       t.cur = atoi(val);
 
     } else if (strcmp(var, "head") == 0) {
-      t.head = atoi(val);
+      ExtractStr(val);
+      if (strlen(val) > 0) {
+        t.head = val[0];
+      }
 
     } else if (strcmp(var, "next") == 0) {
       t.next = atoi(val);
 
     } else if (strcmp(var, "dir") == 0) {
+      ExtractStr(val);
       t.dir = stodir(val);
 
     } else if (strcmp(var, "write") == 0) {
-      t.write = val[0];
+      ExtractStr(val);
+      if (strlen(val) > 0) {
+        t.write = val[0];
+      }
 
     } else if (strcmp(var, "halt") == 0) {
       t.halt = strcmp(val, "true") == 0;
@@ -399,11 +432,48 @@ void parseTOML(const char *fname) {
   return;
 }
 
+void transition_func(turingMachine *tm) {
+  // transition for cur, head
+  const transition *t = NULL;
+  int i = 0;
+  for (i = 0; i < tm->transitions->len; i++) {
+    t = &tm->transitions->arr[i];
+    if (t->cur == tm->curState && (t->head == *tm->head || t->head == '\0')) {
+      break;
+    }
+  }
+  if (i != tm->transitions->len) {
+    // fprintf(stderr, "No transition for current state of turing machine:\n");
+    // exit(EXIT_FAILURE);
+    if (t->halt) {
+    }
+    if (t->write != '\0') {
+      *tm->head = t->write;
+    }
+    if (t->dir != SAME) {
+      tm->dir = t->dir;
+    }
+    tm->curState = t->next;
+  }
+  tm->head += tm->dir;
+}
+
+void exec(turingMachine *tm) {
+  bool exit = false;
+  while (!exit) {
+    printf("Current State: %d, head: %c, tape: %s\n", tm->curState, *tm->head,
+           tm->tape);
+    transition_func(tm);
+    VectorFind(tm->finalStates, tm->curState, exit);
+  }
+}
+
 int main() {
-  parseTOML("tm.toml");
+  parseTOML("tmadd.toml");
 
   printf("\n");
   printf("Loaded data:\nTuring Machine:\n");
+  printf("Tape: %s\n", tm->tape);
   printf("No of States: %d\n", tm->numStates);
   printf("Blank sym: %c\n", tm->blankSymbol);
   printf("init state: %d\n", tm->initState);
@@ -433,4 +503,9 @@ int main() {
   } else {
     printf("No transitinos for the tm\n");
   }
+
+  tm->head = tm->tape + 1;
+  tm->curState = tm->initState;
+  exec(tm);
+  printf("Output: %s\n", tm->tape);
 }

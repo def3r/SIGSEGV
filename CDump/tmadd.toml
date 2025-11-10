@@ -1,0 +1,48 @@
+# Turing machine to add two unary numbers
+[turingmachine]
+numofstates = 4
+initialstate = 0
+finalstates = [3]
+inputsymbols = ['0', '1']
+tapesymbols = ['0', '1', 'B']
+blanksymbol = 'B'
+tape = 'B010B'
+
+# State 0
+[[transition]]
+cur = 0
+head = '0'
+dir = 'RIGHT'
+next = 0
+
+[[transition]]
+cur = 0
+head = '1'
+dir = 'RIGHT'
+next = 1
+write = '0'
+
+# State 1
+[[transition]]
+cur = 1
+head = '0'
+dir = 'RIGHT'
+next = 1
+
+[[transition]]
+cur = 1
+head = 'B'
+dir = 'LEFT'
+next = 2
+
+#State 2
+[[transition]]
+cur = 2
+head = '0'
+dir = 'NOMOVE'
+write = 'B'
+next = 3
+
+[[transition]]
+cur = 3
+halt = true

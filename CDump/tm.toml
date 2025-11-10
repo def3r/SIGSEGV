@@ -1,4 +1,4 @@
-# Turing machine is a 7 tuple
+# Turing machine to replace 111 with 101
 [turingmachine]
 numofstates = 6
 initialstate = 0              # default is 0
@@ -6,7 +6,7 @@ finalstates = [5]
 inputsymbols = ['0', '1']
 tapesymbols = ['0', '1', 'B']
 blanksymbol = 'B'             # default is B
-tape = 'B111010100111B'       # default is empty string
+tape = 'B111001011111B'       # default is empty string
 
 # DIR
 # LEFT=-1, NOMOVE=0, RIGHT=1, SAME (as prev)
@@ -67,8 +67,8 @@ next = 5
 # State 3
 [[transition]]
 dir = 'RIGHT'
+write = '0'
 cur = 3
-head = 0
 next = 4
 
 # State 4
