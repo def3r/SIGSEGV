@@ -1,83 +1,83 @@
 # Turing machine is a 7 tuple
-   [turingmachine   ]    
-blanksymbol=B# default is B
-numofstates=6
-inputsymbols=[0,1]
-tapesymbols=[0,1,B]
-initialstate=0 # default is 0
-finalstates=[5]
-tape=B111010100111B # default is empty string
+[turingmachine]
+numofstates = 6
+initialstate = 0              # default is 0
+finalstates = [5]
+inputsymbols = ['0', '1']
+tapesymbols = ['0', '1', 'B']
+blanksymbol = 'B'             # default is B
+tape = 'B111010100111B'       # default is empty string
 
 # DIR
-# LEFT=-1, NOMOVE=0, RIGHT=1
+# LEFT=-1, NOMOVE=0, RIGHT=1, SAME (as prev)
 
 # 0 based indexing
 
 # State 0
 [[transition]]
-cur=0
-head=1
-next=1
-dir=RIGHT
+dir = 'RIGHT'
+cur = 0
+head = 1
+next = 1
 
 [[transition]]
-cur=0
-head=B
-next=5
-dir=NOMOVE
+head = 'B'
+dir = 'NOMOVE'
+cur = 0
+next = 5
 
 # State 1
 [[transition]]
-cur=1
-head=1
-next=2
-dir=RIGHT
+dir = 'RIGHT'
+cur = 1
+head = 1
+next = 2
 
 [[transition]]
-cur=1
-head=0
-next=0
-dir=RIGHT
+dir = 'RIGHT'
+cur = 1
+head = 0
+next = 0
 
 [[transition]]
-cur=1
-head=B
-next=5
-dir=NOMOVE
+head = 'B'
+dir = 'NOMOVE'
+cur = 1
+next = 5
 
 # State 2
 [[transition]]
-cur=2
-head=1
-next=3
-dir=LEFT
+dir = 'LEFT'
+cur = 2
+head = 1
+next = 3
 
 [[transition]]
-cur=2
-head=0
-next=0
-dir=RIGHT
+dir = 'RIGHT'
+cur = 2
+head = 0
+next = 0
 
 [[transition]]
-cur=2
-head=B
-next=5
-dir=NOMOVE
+head = 'B'
+dir = 'NOMOVE'
+cur = 2
+next = 5
 
 # State 3
 [[transition]]
-cur=3
-head=0
-next=4
-dir=RIGHT
+dir = 'RIGHT'
+cur = 3
+head = 0
+next = 4
 
 # State 4
 [[transition]]
-cur=4
-next=0
-dir=RIGHT
+dir = 'RIGHT'
+cur = 4
+next = 0
 
 # State 5
-   [[transition   ]]
-cur=5
-halt=true
+[[transition]]
+cur = 5
+halt = true

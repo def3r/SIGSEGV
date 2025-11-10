@@ -189,7 +189,12 @@ char *parseMacInfo(FILE *f) {
     char *val = ++c;
 
     if (strcmp(var, "blanksymbol") == 0) {
-      tm->blankSymbol = val[0];
+      val += val[0] == '\'';
+      if (val[strlen(val) - 1] == '\'') {
+        val[strlen(val) - 1] = '\0';
+      }
+      if (strlen(val) > 0)
+        tm->blankSymbol = val[0];
 
     } else if (strcmp(var, "numofstates") == 0) {
       tm->numStates = atoi(val);
@@ -206,7 +211,12 @@ char *parseMacInfo(FILE *f) {
       char *token;
       token = strtok(val, "[,]");
       while (token != NULL) {
-        VectorPush(v, token[0]);
+        token += token[0] == '\'';
+        if (token[strlen(token) - 1] == '\'') {
+          token[strlen(token) - 1] = '\0';
+        }
+        if (strlen(token) > 0)
+          VectorPush(v, token[0]);
         token = strtok(NULL, "[,]");
       }
 
@@ -224,7 +234,12 @@ char *parseMacInfo(FILE *f) {
       char *token;
       token = strtok(val, "[,]");
       while (token != NULL) {
-        VectorPush(v, token[0]);
+        token += token[0] == '\'';
+        if (token[strlen(token) - 1] == '\'') {
+          token[strlen(token) - 1] = '\0';
+        }
+        if (strlen(token) > 0)
+          VectorPush(v, token[0]);
         token = strtok(NULL, "[,]");
       }
 
