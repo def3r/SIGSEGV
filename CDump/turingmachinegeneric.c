@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define DEBUG
+
 #define MakeVector(vType, v)                                                   \
   do {                                                                         \
     v = malloc(sizeof(vType));                                                 \
@@ -12,6 +14,14 @@
       memset(v, 0, sizeof(vType));                                             \
     }                                                                          \
   } while (0)
+
+#define Free(v)                                                                \
+  free(v);                                                                     \
+  v = NULL
+
+#define FreeVector(v)                                                          \
+  free(v->arr);                                                                \
+  Free(v)
 
 #define VectorPush(v, c)                                                       \
   if (v != NULL) {                                                             \
@@ -37,13 +47,51 @@
     }                                                                          \
   }
 
+#define CheckArray(val, key)                                                   \
+  unsigned long arrLen = strlen(val);                                          \
+  if (arrLen == 0 || val[0] != '[' || val[arrLen - 1] != ']') {                \
+    fprintf(stderr, "Expected an array [...] for %s\n", key);                  \
+    exit(EXIT_FAILURE);                                                        \
+  }
+
 #define ExtractStr(val)                                                        \
   val += val[0] == '\'';                                                       \
   if (val[strlen(val) - 1] == '\'') {                                          \
     val[strlen(val) - 1] = '\0';                                               \
   }
 
-extern int errno;
+#define ExtractCharArr(v, val)                                                 \
+  MakeVector(charVector, v);                                                   \
+  char *token;                                                                 \
+  token = strtok(val, "[,]");                                                  \
+  while (token != NULL) {                                                      \
+    ExtractStr(token);                                                         \
+    if (strlen(token) > 0)                                                     \
+      VectorPush(v, token[0]);                                                 \
+    token = strtok(NULL, "[,]");                                               \
+  }
+
+#define ExtractIntArr(v, val)                                                  \
+  MakeVector(intVector, v);                                                    \
+  char *token;                                                                 \
+  token = strtok(val, "[,]");                                                  \
+  while (token != NULL) {                                                      \
+    VectorPush(v, atoi(token));                                                \
+    token = strtok(NULL, "[,]");                                               \
+  }
+
+#define ExtractKeyVal(line, var, val)                                          \
+  char *c = line;                                                              \
+  for (; *c != '\0' && *c != '='; c++)                                         \
+    ;                                                                          \
+  if (*c != '=') {                                                             \
+    fprintf(stderr, "Missing '=' in toml file");                               \
+    exit(EXIT_FAILURE);                                                        \
+  }                                                                            \
+                                                                               \
+  *c = '\0';                                                                   \
+  var = line;                                                                  \
+  val = ++c;
 
 enum Dir { LEFT = -1, RIGHT = 1, NOMOVE = 0, SAME = 2 };
 
@@ -81,17 +129,22 @@ typedef struct {
 } transitionVector2;
 
 typedef struct {
+  uint16_t  curState;
+  enum Dir  dir;
+  bool      halt;
+  char     *head;
+} turingMachineState;
+
+typedef struct {
   uint16_t           numStates;
-  uint16_t           curState;
   uint16_t           initState;
-  enum Dir           dir;
   char               blankSymbol;
   char              *tape;
-  char              *head;
   charVector        *inputSymbols;
   charVector        *tapeSymbols;
   intVector         *finalStates;
   transitionVector  *transitions;
+  turingMachineState state;
 } turingMachine;
 
 // clang-format on
@@ -109,6 +162,22 @@ turingMachine *makeTuringMachine() {
   return tm;
 }
 
+void freeTuringMachine() {
+  tm->state.head = NULL;
+  Free(tm->tape);
+  FreeVector(tm->inputSymbols);
+  FreeVector(tm->tapeSymbols);
+  FreeVector(tm->finalStates);
+  FreeVector(tm->transitions);
+  Free(tm);
+}
+
+void initTuringMachineState() {
+  tm->state.head = tm->tape;
+  tm->state.curState = tm->initState;
+  tm->state.dir = RIGHT;
+}
+
 bool isWhitespace(char c) { return c == ' ' || c == '\t' || c == '\n'; }
 
 enum Dir stodir(const char *c) {
@@ -120,35 +189,6 @@ enum Dir stodir(const char *c) {
     return NOMOVE;
   return SAME;
 }
-
-// char *ltrim(char *s, size_t *len) {
-//   if (*len == 0)
-//     return s;
-//
-//   size_t i = 0;
-//   while (isWhitespace(s[i]) && s[i] != '\0')
-//     i++;
-//   *len -= i;
-//   return (s + i);
-// }
-// char *rtrim(char *s, size_t *len) {
-//   if (*len == 0)
-//     return s;
-//
-//   size_t i = *len - 1;
-//   while ((isWhitespace(s[i])) && i != 0)
-//     i--;
-//   *len = i + 1;
-//   *(s + i + 1) = '\0';
-//   return s;
-// }
-//
-// char *trim(char *s, size_t *len) {
-//   if (*len == 0)
-//     return s;
-//   rtrim(s, len);
-//   return ltrim(s, len);
-// }
 
 void coalesceWhitespace(char *line, size_t *len) {
   if (*len == 0)
@@ -198,94 +238,39 @@ char *parseMacInfo(FILE *f) {
     else if (line[0] == '#')
       continue;
 
-    char *c = line;
-    for (; *c != '\0' && *c != '='; c++)
-      ;
-    if (*c != '=') {
-      fprintf(stderr, "Missing '=' in toml file");
-      exit(EXIT_FAILURE);
-    }
+    char *key, *val;
+    ExtractKeyVal(line, key, val);
 
-    *c = '\0';
-    char *var = line;
-    char *val = ++c;
-
-    if (strcmp(var, "blanksymbol") == 0) {
+    if (strcmp(key, "blanksymbol") == 0) {
       ExtractStr(val);
       if (strlen(val) > 0)
         tm->blankSymbol = val[0];
 
-    } else if (strcmp(var, "numofstates") == 0) {
+    } else if (strcmp(key, "numofstates") == 0) {
       tm->numStates = atoi(val);
 
-    } else if (strcmp(var, "inputsymbols") == 0) {
-      unsigned long arrLen = strlen(val);
-      if (arrLen == 0 || val[0] != '[' || val[arrLen - 1] != ']') {
-        fprintf(stderr, "Expected an array [...] for inputsymbols\n");
-        exit(EXIT_FAILURE);
-      }
-
+    } else if (strcmp(key, "inputsymbols") == 0) {
+      CheckArray(val, key);
       charVector *v;
-      MakeVector(charVector, v);
-      char *token;
-      token = strtok(val, "[,]");
-      while (token != NULL) {
-        token += token[0] == '\'';
-        if (token[strlen(token) - 1] == '\'') {
-          token[strlen(token) - 1] = '\0';
-        }
-        if (strlen(token) > 0)
-          VectorPush(v, token[0]);
-        token = strtok(NULL, "[,]");
-      }
-
+      ExtractCharArr(v, val);
       tm->inputSymbols = v;
 
-    } else if (strcmp(var, "tapesymbols") == 0) {
-      unsigned long arrLen = strlen(val);
-      if (arrLen == 0 || val[0] != '[' || val[arrLen - 1] != ']') {
-        fprintf(stderr, "Expected an array [...] for tapesymbols\n");
-        exit(EXIT_FAILURE);
-      }
-
+    } else if (strcmp(key, "tapesymbols") == 0) {
+      CheckArray(val, key);
       charVector *v;
-      MakeVector(charVector, v);
-      char *token;
-      token = strtok(val, "[,]");
-      while (token != NULL) {
-        token += token[0] == '\'';
-        if (token[strlen(token) - 1] == '\'') {
-          token[strlen(token) - 1] = '\0';
-        }
-        if (strlen(token) > 0)
-          VectorPush(v, token[0]);
-        token = strtok(NULL, "[,]");
-      }
-
+      ExtractCharArr(v, val);
       tm->tapeSymbols = v;
 
-    } else if (strcmp(var, "finalstates") == 0) {
-      unsigned long arrLen = strlen(val);
-      if (arrLen == 0 || val[0] != '[' || val[arrLen - 1] != ']') {
-        fprintf(stderr, "Expected an array [...] for finalstates\n");
-        exit(EXIT_FAILURE);
-      }
-
+    } else if (strcmp(key, "finalstates") == 0) {
+      CheckArray(val, key);
       intVector *v;
-      MakeVector(intVector, v);
-      char *token;
-      token = strtok(val, "[,]");
-      while (token != NULL) {
-        VectorPush(v, atoi(token));
-        token = strtok(NULL, "[,]");
-      }
-
+      ExtractIntArr(v, val);
       tm->finalStates = v;
 
-    } else if (strcmp(var, "initialstate") == 0) {
+    } else if (strcmp(key, "initialstate") == 0) {
       tm->initState = atoi(val);
 
-    } else if (strcmp(var, "tape") == 0) {
+    } else if (strcmp(key, "tape") == 0) {
       ExtractStr(val);
       if (strlen(val) > 0) {
         tm->tape = malloc(strlen(val));
@@ -293,7 +278,7 @@ char *parseMacInfo(FILE *f) {
       }
 
     } else {
-      printf("%s\t\t%s\n", var, val);
+      printf("Unhandled Key val pair [%s = %s]\n", key, val);
     }
 
     free(linestart);
@@ -328,55 +313,48 @@ char *parseTransition(FILE *f) {
     else if (line[0] == '#')
       continue;
 
-    char *c = line;
-    for (; *c != '\0' && *c != '='; c++)
-      ;
-    if (*c != '=') {
-      fprintf(stderr, "Missing '=' in toml file");
-      exit(EXIT_FAILURE);
-    }
+    char *key, *val;
+    ExtractKeyVal(line, key, val);
 
-    *c = '\0';
-    char *var = line;
-    char *val = ++c;
-
-    if (strcmp(var, "cur") == 0) {
+    if (strcmp(key, "cur") == 0) {
       t.cur = atoi(val);
 
-    } else if (strcmp(var, "head") == 0) {
+    } else if (strcmp(key, "head") == 0) {
       ExtractStr(val);
       if (strlen(val) > 0) {
         t.head = val[0];
       }
 
-    } else if (strcmp(var, "next") == 0) {
+    } else if (strcmp(key, "next") == 0) {
       t.next = atoi(val);
 
-    } else if (strcmp(var, "dir") == 0) {
+    } else if (strcmp(key, "dir") == 0) {
       ExtractStr(val);
       t.dir = stodir(val);
 
-    } else if (strcmp(var, "write") == 0) {
+    } else if (strcmp(key, "write") == 0) {
       ExtractStr(val);
       if (strlen(val) > 0) {
         t.write = val[0];
       }
 
-    } else if (strcmp(var, "halt") == 0) {
+    } else if (strcmp(key, "halt") == 0) {
       t.halt = strcmp(val, "true") == 0;
 
     } else {
-      printf("%s|\n", line);
+      printf("Unhandled Key: %s|\n", line);
     }
 
     free(linestart);
     line = NULL;
     len = 0;
   }
+
   if (t.cur == UINT16_MAX) {
     fprintf(stderr, "Expected a cur state for transition\n");
     exit(EXIT_FAILURE);
   }
+
   VectorPush(tm->transitions, t);
   return line;
 }
@@ -400,8 +378,6 @@ void parseLine(FILE *f, char *line, size_t len) {
 
     line = parseTransition(f);
     parseLine(f, line, strlen(line));
-  } else {
-    printf("%s|\n", line);
   }
 }
 
@@ -420,7 +396,6 @@ void parseTOML(const char *fname) {
   while ((n = getline(&line, &len, f)) != -1) {
     len = n;
     linestart = line;
-    // line = trim(line, &len);
     coalesceWhitespace(line, &len);
     parseLine(f, line, len);
 
@@ -438,40 +413,39 @@ void transition_func(turingMachine *tm) {
   int i = 0;
   for (i = 0; i < tm->transitions->len; i++) {
     t = &tm->transitions->arr[i];
-    if (t->cur == tm->curState && (t->head == *tm->head || t->head == '\0')) {
+    if (t->cur == tm->state.curState &&
+        (t->head == *tm->state.head || t->head == '\0')) {
       break;
     }
   }
+
   if (i != tm->transitions->len) {
-    // fprintf(stderr, "No transition for current state of turing machine:\n");
-    // exit(EXIT_FAILURE);
     if (t->halt) {
+      tm->state.halt = true;
     }
     if (t->write != '\0') {
-      *tm->head = t->write;
+      *tm->state.head = t->write;
     }
     if (t->dir != SAME) {
-      tm->dir = t->dir;
+      tm->state.dir = t->dir;
     }
-    tm->curState = t->next;
+    tm->state.curState = t->next;
   }
-  tm->head += tm->dir;
+  tm->state.head += tm->state.dir;
 }
 
 void exec(turingMachine *tm) {
+  initTuringMachineState();
   bool exit = false;
-  while (!exit) {
-    printf("Current State: %d, head: %c, tape: %s\n", tm->curState, *tm->head,
-           tm->tape);
+  while (!exit && !tm->state.halt) {
+    printf("Current State: %d, head: %c, tape: %s\n", tm->state.curState,
+           *tm->state.head, tm->tape);
     transition_func(tm);
-    VectorFind(tm->finalStates, tm->curState, exit);
+    VectorFind(tm->finalStates, tm->state.curState, exit);
   }
 }
 
-int main() {
-  parseTOML("tmadd.toml");
-
-  printf("\n");
+void debug() {
   printf("Loaded data:\nTuring Machine:\n");
   printf("Tape: %s\n", tm->tape);
   printf("No of States: %d\n", tm->numStates);
@@ -481,14 +455,17 @@ int main() {
   for (int i = 0; i < tm->finalStates->len; i++) {
     printf("%d,", tm->finalStates->arr[i]);
   }
+
   printf("\ninput symbols: ");
   for (int i = 0; i < tm->inputSymbols->len; i++) {
     printf("%c,", tm->inputSymbols->arr[i]);
   }
+
   printf("\ntape symbols: ");
   for (int i = 0; i < tm->tapeSymbols->len; i++) {
     printf("%c,", tm->tapeSymbols->arr[i]);
   }
+
   printf("\ntransitions: ");
 
   if (tm->transitions != NULL) {
@@ -503,9 +480,16 @@ int main() {
   } else {
     printf("No transitinos for the tm\n");
   }
+}
 
-  tm->head = tm->tape + 1;
-  tm->curState = tm->initState;
+int main() {
+  parseTOML("tmadd.toml");
+  printf("\n");
+
+#ifdef DEBUG
+  debug();
+#endif
+
   exec(tm);
   printf("Output: %s\n", tm->tape);
 }

@@ -6,7 +6,7 @@ finalstates = [5]
 inputsymbols = ['0', '1']
 tapesymbols = ['0', '1', 'B']
 blanksymbol = 'B'             # default is B
-tape = 'B111001011111B'       # default is empty string
+tape = '111001011111B'        # default is empty string
 
 # DIR
 # LEFT=-1, NOMOVE=0, RIGHT=1, SAME (as prev)
