@@ -11,6 +11,7 @@ Dir Naming Convention:
 > [!IMPORTANT]
 > *`Quick List:`*
 
+- [Universal Turing Machine w/ TOML i/p](https://github.com/def3r/SIGSEGV/blob/main/CDump/turingmachinegeneric.c)
 - [Layout Engine in Go](https://github.com/def3r/SIGSEGV/tree/main/GoDump/layoutEngine)
 - [Driver for kernel space ring buffer](https://github.com/def3r/SIGSEGV/tree/main/Kernel/ringBfr)
 - [dbg.h](https://github.com/def3r/cp/blob/main/dbg.h)
