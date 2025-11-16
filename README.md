@@ -2,7 +2,7 @@ Dir Naming Convention:
 
 | Dir Naming | Convention |
 | :--------- | :--------- |
-| *`UPPERCASE`* | College Course work |
+| *`UPPERCASE`* | College Course work *\[Exception: KDE\]* |
 | *`lowercase`* | Toy Implementation Project |
 | *`CapitalCamelCase`* | Recreational Programming |
 
