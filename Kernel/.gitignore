@@ -5,4 +5,7 @@
 !docsEnhancement.txt
 !.gitignore
 !charDevice.c
+
 !ringBfr/
+!bareBones/
+!bareBones/**
