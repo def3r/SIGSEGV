@@ -11,6 +11,7 @@ Dir Naming Convention:
 > [!IMPORTANT]
 > *`Quick List:`*
 
+- [Operation System Kernel](https://github.com/def3r/SIGSEGV/tree/main/Kernel/bareBones)
 - [Turing Machine w/ TOML input](https://github.com/def3r/SIGSEGV/blob/main/CDump/turingmachinegeneric.c)
 - [Layout Engine in Go](https://github.com/def3r/SIGSEGV/tree/main/GoDump/layoutEngine)
 - [Driver for kernel space ring buffer](https://github.com/def3r/SIGSEGV/tree/main/Kernel/ringBfr)
