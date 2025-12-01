@@ -143,8 +143,98 @@ void terminal_yay_boo(void) {
   }
 }
 
+// clang-format off
+struct gdt_entry {
+  uint32_t base;
+  uint32_t limit;
+  uint8_t  access_byte;
+  uint8_t  flags;
+};
+// clang-format on
+
+void encode_gdt_entry(uint8_t *target, struct gdt_entry source) {
+  if (source.limit > 0xFFFFF) {
+    // termina("GDT cannot encode limits larger than 0xFFFFF");
+  }
+
+  // Encode the limit
+  target[0] = source.limit & 0xFF;
+  target[1] = (source.limit >> 8) & 0xFF;
+  target[6] = (source.limit >> 16) & 0x0F;
+
+  // Encode the base
+  target[2] = source.base & 0xFF;
+  target[3] = (source.base >> 8) & 0xFF;
+  target[4] = (source.base >> 16) & 0xFF;
+  target[7] = (source.base >> 24) & 0xFF;
+
+  // Encode the access byte
+  target[5] = source.access_byte;
+
+  // Encode the flags
+  target[6] |= (source.flags << 4);
+}
+
+// small kernel GDT
+void gdt(void) {
+  struct gdt_entry null_descriptor = {
+      .base = 0,
+      .limit = 0x00000000,
+      .access_byte = 0x00,
+      .flags = 0x0,
+  };
+  struct gdt_entry kernel_mode_cs = {
+      .base = 0x00400000,
+      .limit = 0x003FFFFF,
+      .access_byte = 0x9A,
+      .flags = 0xC,
+  };
+  struct gdt_entry kernel_mode_ds = {
+      .base = 0x00800000,
+      .limit = 0x003FFFFF,
+      .access_byte = 0x92,
+      .flags = 0xC,
+  };
+
+  // Needed for multitasking (context switch)
+  // struct gdt_entry task_state_segment = {
+  //     .base = 0x00C00000,
+  //     .limit = 0x003FFFFF,
+  //     .access_byte = 0x89,
+  //     .flags = 0x0,
+  // };
+
+  // GDT Entry begins from 16 MiB address;
+  encode_gdt_entry((uint8_t *)0x01000000, null_descriptor);
+  encode_gdt_entry((uint8_t *)0x01000008, kernel_mode_cs);
+  encode_gdt_entry((uint8_t *)0x01000010, kernel_mode_ds);
+  // encode_gdt_entry((uint8_t *)0x01000018, task_state_segment);
+}
+
 void kernel_main(void) {
-  terminal_color = vga_entry_color(VGA_COLOR_WHITE, VGA_COLOR_CYAN);
+  terminal_color = vga_entry_color(VGA_COLOR_WHITE, VGA_COLOR_BLUE);
   terminal_initialize();
-  terminal_yay_boo();
+
+  terminal_writestring("GDT Entries:\n");
+  uint8_t *gdt = (uint8_t *)0x01000000;
+  int num_entries = 3;
+  for (int e = 0; e < num_entries; e++) {
+    terminal_putchar('[');
+    terminal_putchar(' ');
+    for (int b = 0; b < 8; b++) {
+      uint8_t val = gdt[e * 8 + b];
+
+      // print as 2-digit hex
+      char hi = "0123456789ABCDEF"[val >> 4];
+      char lo = "0123456789ABCDEF"[val & 0xF];
+
+      terminal_putchar(hi);
+      terminal_putchar(lo);
+      terminal_putchar(' ');
+    }
+    terminal_putchar(']');
+    terminal_putchar('\n');
+  }
+
+  // terminal_yay_boo();
 }

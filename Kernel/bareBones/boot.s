@@ -16,6 +16,18 @@
 # Create stack
 # Multiboot does not provide a stack pointer by itself
 # Kernel's duty to create esp
+
+# Stack growin downwards
+# Stack top
+#     |
+#     V
+#
+#  Skipped 16KiB
+#
+#
+# Stack bottom
+#----------------
+# GRUB Stack
 .section .bss
 .align 16
 stack_bottom:

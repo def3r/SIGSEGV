@@ -37,3 +37,14 @@ Boot the kernel
 ```console
 $ qemu-system-i386 -kernel myos.bin
 ```
+
+## Keyboard Support
+-> Need Interrupts -> Need Interrupt Descriptor Table -> Need Global Descriptor Table
+
+### Loading the GDT:
+`https://wiki.osdev.org/GDT_Tutorial`
+
+1. Paging is currently disabled
+2. Assumed im non-flat (base != 0)
+3. Hardcoded the gdt entries
+4. Switched from AT&T to NASM
