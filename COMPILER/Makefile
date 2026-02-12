@@ -1,6 +1,6 @@
 .PHONY: all clean
 
-all: anbn palindrome balancedParan for2while
+all: anbn palindrome balancedParan for2while validmail
 
 # anbn
 anbn: anbn.tab.c anbn.l
@@ -32,8 +32,18 @@ for2while: for2while.l
 	flex for2while.l
 	gcc for2while.tab.c lex.yy.c -o for2while.out
 
+validmail: validmail.l
+	flex validmail.l
+	gcc lex.yy.c -o validmail.out
+
+even0s: even0s.y even0s.l
+	bison -d even0s.y
+	flex even0s.l
+	gcc even0s.tab.c lex.yy.c -o even0s.out
+
 clean:
 	rm -rf lex.yy.c
-	rm -rf for2while.tab.c palindrome.tab.c balancedParan.tab.c anbn.tab.c
-	rm -rf for2while.tab.h palindrome.tab.h balancedParan.tab.h anbn.tab.h
-	rm -rf for2while.out   palindrome.out   balancedParan.out    anbn.out
+	rm -rf even0s.tab.c for2while.tab.c palindrome.tab.c balancedParan.tab.c anbn.tab.c
+	rm -rf even0s.tab.h for2while.tab.h palindrome.tab.h balancedParan.tab.h anbn.tab.h
+	rm -rf even0s.out   for2while.out   palindrome.out   balancedParan.out   anbn.out
+	rm -rf validmail.out
