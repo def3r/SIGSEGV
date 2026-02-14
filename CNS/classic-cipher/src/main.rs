@@ -23,7 +23,7 @@ fn caeser_cipher(plain_text: String, key: i8) -> String {
         let cipher_char = (('a' as u8) + ((c - ('a' as u8) + key as u8) % 26)) as char;
         res.push(cipher_char);
     }
-    return res;
+    res
 }
 
 fn caeser_cipher_d(plain_text: String, key: i8) -> String {
@@ -35,8 +35,9 @@ fn caeser_cipher_d(plain_text: String, key: i8) -> String {
             continue;
         }
 
-        let cipher_char = (('a' as u8) + ((c - ('a' as u8) - key as u8) % 26)) as char;
+        let cipher_char =
+            (('a' as u8) + ((c + ('a' as u8) - ('A' as u8) + 1 - key as u8) % 26)) as char;
         res.push(cipher_char);
     }
-    return res;
+    res
 }
