@@ -22,13 +22,19 @@ bool accept = false;
 // well as ambiguous G
 //
 // https://www.gnu.org/software/bison/manual/html_node/GLR-Parsers.html
+//
+// update: well now this is a deterministic G, but still shift reduce
+//         conflicts, damn you LALR
 %glr-parser
 %%
-expr : TOKEN_A expr TOKEN_A { }
-     | TOKEN_B expr TOKEN_B { }
-     | TOKEN_A              { accept = true; }
-     | TOKEN_B              { accept = true; }
-     | /* epsilon */        { accept = true; }
+expr : TOKEN_A exprA { }
+     | TOKEN_B exprB { }
+
+exprA : expr TOKEN_A
+      | TOKEN_A              { accept = true; }
+
+exprB : expr TOKEN_B
+      | TOKEN_B              { accept = true; }
 %%
 
 int main() {

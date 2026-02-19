@@ -11,12 +11,14 @@ anbn.tab.c:
 	bison -d anbn.y
 
 # Palindrome
-palindrome: palindrome.tab.c palindrome.l
-	flex palindrome.l
+palindrome: palindrome.tab.c lex.yy.c
 	gcc palindrome.tab.c lex.yy.c -o palindrome.out
 
-palindrome.tab.c:
+palindrome.tab.c palindrome.tab.h: palindrome.y
 	bison -d palindrome.y
+
+lex.yy.c: palindrome.l palindrome.tab.h
+	lex palindrome.l
 
 # balancedParan
 balancedParan: balancedParan.tab.c balancedParan.l
