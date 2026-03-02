@@ -1,18 +1,19 @@
 #include <limits.h>
 #include <stdarg.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
-static bool print(const char *data, size_t length) {
-  const unsigned char *bytes = (const unsigned char *)data;
+static bool print(const char* data, size_t length) {
+  const unsigned char* bytes = (const unsigned char*)data;
   for (size_t i = 0; i < length; i++)
     if (putchar(bytes[i]) == EOF)
       return false;
   return true;
 }
 
-int printf(const char *restrict format, ...) {
+int printf(const char* restrict format, ...) {
   va_list parameters;
   va_start(parameters, format);
 
@@ -38,8 +39,9 @@ int printf(const char *restrict format, ...) {
       continue;
     }
 
-    const char *format_begun_at = format++;
+    const char* format_begun_at = format++;
 
+    // %c -> char
     if (*format == 'c') {
       format++;
       char c = (char)va_arg(parameters, int /* char promotes to int */);
@@ -50,9 +52,37 @@ int printf(const char *restrict format, ...) {
       if (!print(&c, sizeof(c)))
         return -1;
       written++;
+
+      // %d -> int
+    } else if (*format == 'd') {
+      format++;
+      int ival = va_arg(parameters, int);
+      char istr[12] = {0};
+      uint8_t idx = 0;
+
+      if (ival < 0) {
+        istr[idx++] = '-';
+        // TODO: Check for INT_MIN
+        ival *= -1;
+      }
+      uint8_t size = 1;
+      uint32_t mxunit = 10;
+      while (ival / mxunit != 0) {
+        size++;
+        mxunit *= 10;
+      }
+
+      for (int8_t i = idx + size - 1; i >= idx; i--) {
+        istr[i] = '0' + (ival % 10);
+        ival = ival / 10;
+      }
+
+      print(istr, idx + size);
+
+      // %s -> char arr
     } else if (*format == 's') {
       format++;
-      const char *str = va_arg(parameters, const char *);
+      const char* str = va_arg(parameters, const char*);
       size_t len = strlen(str);
       if (maxrem < len) {
         // TODO: Set errno to EOVERFLOW.

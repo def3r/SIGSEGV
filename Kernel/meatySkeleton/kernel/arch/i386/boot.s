@@ -38,7 +38,6 @@ _start:
 	jmp 1b
 .size _start, . - _start
 
-.section .text
 .global idt_load
 .extern idtp
 .type idt_load, @function
