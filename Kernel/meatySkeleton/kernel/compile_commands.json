@@ -1,1 +1,71 @@
-[]
+[
+  {
+    "file": "arch/i386/tty.c",
+    "arguments": [
+      "i686-elf-gcc",
+      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/sysroot",
+      "-isystem=/usr/include",
+      "-MD",
+      "-c",
+      "arch/i386/tty.c",
+      "-o",
+      "arch/i386/tty.o",
+      "-std=gnu11",
+      "-O2",
+      "-g",
+      "-ffreestanding",
+      "-Wall",
+      "-Wextra",
+      "-D__is_kernel",
+      "-Iinclude"
+    ],
+    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/kernel",
+    "output": "arch/i386/tty.o"
+  },
+  {
+    "file": "arch/i386/gdt.c",
+    "arguments": [
+      "i686-elf-gcc",
+      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/sysroot",
+      "-isystem=/usr/include",
+      "-MD",
+      "-c",
+      "arch/i386/gdt.c",
+      "-o",
+      "arch/i386/gdt.o",
+      "-std=gnu11",
+      "-O2",
+      "-g",
+      "-ffreestanding",
+      "-Wall",
+      "-Wextra",
+      "-D__is_kernel",
+      "-Iinclude"
+    ],
+    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/kernel",
+    "output": "arch/i386/gdt.o"
+  },
+  {
+    "file": "kernel/kernel.c",
+    "arguments": [
+      "i686-elf-gcc",
+      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/sysroot",
+      "-isystem=/usr/include",
+      "-MD",
+      "-c",
+      "kernel/kernel.c",
+      "-o",
+      "kernel/kernel.o",
+      "-std=gnu11",
+      "-O2",
+      "-g",
+      "-ffreestanding",
+      "-Wall",
+      "-Wextra",
+      "-D__is_kernel",
+      "-Iinclude"
+    ],
+    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/kernel",
+    "output": "kernel/kernel.o"
+  }
+]

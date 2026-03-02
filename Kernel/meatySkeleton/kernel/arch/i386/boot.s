@@ -37,3 +37,11 @@ _start:
 1:	hlt
 	jmp 1b
 .size _start, . - _start
+
+.section .text
+.global idt_load
+.extern idtp
+.type idt_load, @function
+idt_load:
+	lidt [idtp]
+	ret
