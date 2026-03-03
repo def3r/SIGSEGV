@@ -1,3 +1,7 @@
+.section .text
+.align 4            # Ensures the code starts on a 32-bit boundary
+.code32             # Explicitly tells GAS to emit 32-bit opcodes
+
 .global isr0
 .global isr1
 .global isr2
@@ -36,7 +40,7 @@ isr0:
 	cli
 	push $0  // Normal ISR stub to show dummy error code
 	push $0
-	call isr_common_stub
+	jmp isr_common_stub
 
 # Debug exception
 isr1:

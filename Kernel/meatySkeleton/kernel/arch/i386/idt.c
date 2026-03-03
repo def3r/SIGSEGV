@@ -26,7 +26,7 @@ void idt_install() {
 
   // idt_set_gate used here for new ISRs
   isrs_install();
-  printf("installed!");
+  // printf("installed!");
 
   idt_load();
 }

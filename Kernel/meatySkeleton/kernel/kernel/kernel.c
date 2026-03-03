@@ -1,15 +1,16 @@
 #include <stdio.h>
+#include <system.h>
 
 #include <kernel/gdt.h>
-#include <kernel/tty.h>
 #include <kernel/idt.h>
+#include <kernel/tty.h>
 
 // Since the IDT is not made yet, and there is no gate for expception handling
 // the system will reboot on an exception like this.
 //
 // This is the behaviour unitl we provide an ISR for interrupt handling,
 void divBy0() {
-  volatile int m = 0; // needs to be volatile!
+  volatile int m = 0;  // needs to be volatile!
   int f = 5 / m;
   printf("res = %d",
          f);  // need to use f, otherwise compiler does unsed var elimination
@@ -23,8 +24,13 @@ void kernel_main(void) {
   terminal_initialize();
   gdt_init();
   idt_install();
+  irq_install();
+  timer_install();
+  __asm__ __volatile__("sti");
+  printf("YAY BOO! YAY BOO!\n");
+  // divBy0();
 
-  printf("YAY BOO! YAY BOO!");
-
-  divBy0();
+  printf("Interrupts enabled. Waiting...\n");
+  while (1) {
+  }
 }

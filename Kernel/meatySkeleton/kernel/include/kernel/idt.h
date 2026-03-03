@@ -2,6 +2,7 @@
 #define IDT_H_
 
 #include <stdint.h>
+#include <system.h>
 
 // clang-format off
 struct idt_entry {
@@ -21,5 +22,10 @@ struct idt_ptr {
 extern void idt_load();
 void idt_set_gate(uint8_t num, uint64_t base, uint16_t sel, uint8_t flags);
 void idt_install();
+
+
+void irq_install_handler(uint8_t irq, void (*handler)(struct regs* r));
+void irq_uninstall_handler(uint8_t irq);
+void irq_install();
 
 #endif  // !IDT_H+

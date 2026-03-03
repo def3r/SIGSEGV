@@ -46,37 +46,37 @@ void isrs_install() {
   // Access flags = 0x8E -> entry is present and in ring 0 (kernel mode) and
   // lower 5 bits set to required 14 (hex E)
   idt_set_gate(0, (unsigned)isr0, 0x08, 0x8E);
-  // idt_set_gate(1, (unsigned)example0, 0x08, 0x8E);
-  // idt_set_gate(2, (unsigned)example0, 0x08, 0x8E);
-  // idt_set_gate(3, (unsigned)example0, 0x08, 0x8E);
-  // idt_set_gate(4, (unsigned)example0, 0x08, 0x8E);
-  // idt_set_gate(5, (unsigned)example0, 0x08, 0x8E);
-  idt_set_gate(6, (unsigned)example0, 0x08, 0x8E);
-  // idt_set_gate(7, (unsigned)example0, 0x08, 0x8E);
-  // idt_set_gate(8, (unsigned)example0, 0x08, 0x8E);
-  // idt_set_gate(9, (unsigned)example0, 0x08, 0x8E);
-  // idt_set_gate(10, (unsigned)example0, 0x08, 0x8E);
-  // idt_set_gate(11, (unsigned)example0, 0x08, 0x8E);
-  // idt_set_gate(12, (unsigned)example0, 0x08, 0x8E);
-  // idt_set_gate(13, (unsigned)example0, 0x08, 0x8E);
-  // idt_set_gate(14, (unsigned)example0, 0x08, 0x8E);
-  // idt_set_gate(15, (unsigned)example0, 0x08, 0x8E);
-  // idt_set_gate(16, (unsigned)example0, 0x08, 0x8E);
-  // idt_set_gate(17, (unsigned)example0, 0x08, 0x8E);
-  // idt_set_gate(18, (unsigned)example0, 0x08, 0x8E);
-  // idt_set_gate(19, (unsigned)example0, 0x08, 0x8E);
-  // idt_set_gate(20, (unsigned)example0, 0x08, 0x8E);
-  // idt_set_gate(21, (unsigned)example0, 0x08, 0x8E);
-  // idt_set_gate(22, (unsigned)example0, 0x08, 0x8E);
-  // idt_set_gate(23, (unsigned)example0, 0x08, 0x8E);
-  // idt_set_gate(24, (unsigned)example0, 0x08, 0x8E);
-  // idt_set_gate(25, (unsigned)example0, 0x08, 0x8E);
-  // idt_set_gate(26, (unsigned)example0, 0x08, 0x8E);
-  // idt_set_gate(27, (unsigned)example0, 0x08, 0x8E);
-  // idt_set_gate(28, (unsigned)example0, 0x08, 0x8E);
-  // idt_set_gate(29, (unsigned)example0, 0x08, 0x8E);
-  // idt_set_gate(30, (unsigned)example0, 0x08, 0x8E);
-  // idt_set_gate(31, (unsigned)example0, 0x08, 0x8E);
+  idt_set_gate(1, (unsigned)isr1, 0x08, 0x8E);
+  idt_set_gate(2, (unsigned)isr2, 0x08, 0x8E);
+  idt_set_gate(3, (unsigned)isr3, 0x08, 0x8E);
+  idt_set_gate(4, (unsigned)isr4, 0x08, 0x8E);
+  idt_set_gate(5, (unsigned)isr5, 0x08, 0x8E);
+  idt_set_gate(6, (unsigned)isr6, 0x08, 0x8E);
+  idt_set_gate(7, (unsigned)isr7, 0x08, 0x8E);
+  idt_set_gate(8, (unsigned)isr8, 0x08, 0x8E);
+  idt_set_gate(9, (unsigned)isr9, 0x08, 0x8E);
+  idt_set_gate(10, (unsigned)isr10, 0x08, 0x8E);
+  idt_set_gate(11, (unsigned)isr11, 0x08, 0x8E);
+  idt_set_gate(12, (unsigned)isr12, 0x08, 0x8E);
+  idt_set_gate(13, (unsigned)isr13, 0x08, 0x8E);
+  idt_set_gate(14, (unsigned)isr14, 0x08, 0x8E);
+  idt_set_gate(15, (unsigned)isr15, 0x08, 0x8E);
+  idt_set_gate(16, (unsigned)isr16, 0x08, 0x8E);
+  idt_set_gate(17, (unsigned)isr17, 0x08, 0x8E);
+  idt_set_gate(18, (unsigned)isr18, 0x08, 0x8E);
+  idt_set_gate(19, (unsigned)isr19, 0x08, 0x8E);
+  idt_set_gate(20, (unsigned)isr20, 0x08, 0x8E);
+  idt_set_gate(21, (unsigned)isr21, 0x08, 0x8E);
+  idt_set_gate(22, (unsigned)isr22, 0x08, 0x8E);
+  idt_set_gate(23, (unsigned)isr23, 0x08, 0x8E);
+  idt_set_gate(24, (unsigned)isr24, 0x08, 0x8E);
+  idt_set_gate(25, (unsigned)isr25, 0x08, 0x8E);
+  idt_set_gate(26, (unsigned)isr26, 0x08, 0x8E);
+  idt_set_gate(27, (unsigned)isr27, 0x08, 0x8E);
+  idt_set_gate(28, (unsigned)isr28, 0x08, 0x8E);
+  idt_set_gate(29, (unsigned)isr29, 0x08, 0x8E);
+  idt_set_gate(30, (unsigned)isr30, 0x08, 0x8E);
+  idt_set_gate(31, (unsigned)isr31, 0x08, 0x8E);
 }
 
 const unsigned char* exception_msg[] = {
@@ -115,18 +115,18 @@ const unsigned char* exception_msg[] = {
 };
 
 void fault_handler(struct regs* r) {
-  printf("fault number: %d: ", r->int_no);
-  printf("fault return code %d: ", r->err_code);
-  // printf("%d %d %d %d %d",
-  //        r->gs, r->fs, r->es, r->ds, r->dummy);
+  printf("fault number: %d\n", r->int_no);
+  printf("fault return code %d\n", r->err_code);
+  // printf("%d %d %d %d %d\n",
+  // r->gs, r->fs, r->es, r->ds, r->dummy);
   // r->edi, r->esi, r->ebp, r->esp, r->ebx, r->edx, r->ecx, r->eax);
   // r->int_no, r->err_code);
   // r->eip, r->cs, r->eflags, r->userresp, r->ss);
   if (r->int_no < 32) {
     puts((char*)exception_msg[r->int_no]);
-    printf("Exception occured! System Halt!");
-  for (;;)
-    ;
-   }
-  printf("fault handler");
+    printf("Exception occured! System Halt!\n");
+    for (;;)
+      ;
+  }
+  printf("FAULT HANDLER DID NOT HANDLE!\n");
 }
