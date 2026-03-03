@@ -20,7 +20,7 @@ void timer_handler(struct regs* r) {  // NOLINT
   timer_ticks++;
   // Every 18 (by default) ticks ~1 second
   if (timer_ticks % freq == 0) {
-    printf("%d seconds has passed!\n", (timer_ticks / freq));
+    printf("%d seconds has passed!\r", (timer_ticks / freq));
   }
 }
 

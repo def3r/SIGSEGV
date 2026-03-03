@@ -61,20 +61,16 @@ void terminal_putchar(char c) {
   int line;
   unsigned char uc = c;
 
-  if (uc == '\n') {
+  if (uc == '\r') {
     terminal_column = 0;
-    if (++terminal_row == VGA_HEIGHT) {
-      for (line = 1; line <= VGA_HEIGHT - 1; line++) {
-        terminal_scroll(line);
-      }
-      terminal_delete_last_line();
-      terminal_row = VGA_HEIGHT - 1;
-    }
-    return;
+  } else if (uc == '\n') {
+    terminal_column = 0;
+    terminal_row++;
+  } else {
+    terminal_putentryat(uc, terminal_color, terminal_column, terminal_row);
+    terminal_column++;
   }
-
-  terminal_putentryat(uc, terminal_color, terminal_column, terminal_row);
-  if (++terminal_column == VGA_WIDTH) {
+  if (terminal_column == VGA_WIDTH) {
     terminal_column = 0;
     if (++terminal_row == VGA_HEIGHT) {
       for (line = 1; line <= VGA_HEIGHT - 1; line++) {

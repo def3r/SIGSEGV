@@ -159,5 +159,28 @@
     ],
     "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/kernel",
     "output": "kernel/kernel.o"
+  },
+  {
+    "file": "kernel/kb.c",
+    "arguments": [
+      "i686-elf-gcc",
+      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/sysroot",
+      "-isystem=/usr/include",
+      "-MD",
+      "-c",
+      "kernel/kb.c",
+      "-o",
+      "kernel/kb.o",
+      "-std=gnu11",
+      "-O2",
+      "-g",
+      "-ffreestanding",
+      "-Wall",
+      "-Wextra",
+      "-D__is_kernel",
+      "-Iinclude"
+    ],
+    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/kernel",
+    "output": "kernel/kb.o"
   }
 ]

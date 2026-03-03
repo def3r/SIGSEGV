@@ -134,3 +134,29 @@ two kinds of interrupts:
 
 
 </details>
+
+<details>
+
+  <summary>Implementing PS/2 Keyboard (finally)</summary>
+
+  refs:<br>
+  *http://www.osdever.net/bkerndev/Docs/keyboard.htm*<br>
+
+  - A scancode is simply a key number. The keyboard assigns a number to each
+    key on the keyboard; this is your scancode
+  - use a lookup table (an array of values) and use the scancode as the index
+    into this table
+    - The lookup table is called a keymap, and will be used to translate
+      scancodes into ASCII values
+  - if bit 7 is set (test with 'scancode & 0x80'), then this is the keyboard's
+    way of telling us that a key was just released
+  - The keyboard is attached to the computer through a special microcontroller
+    chip on your mainboard. This keyboard controller chip has 2 channels: one
+    for the keyboard, and one for the mouse.
+  - The keyboard controller has 2 main registers: a Data register at 0x60, and
+    a Control register at 0x64.
+    - Anything that the keyboard wants to send the computer is stored into the
+      Data register
+    - keyboard will raise IRQ1 whenever it has data for us to read
+
+</details>
