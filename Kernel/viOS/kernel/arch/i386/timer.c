@@ -16,12 +16,11 @@ void timer_phase(uint32_t hz) {  // NOLINT
 uint32_t timer_ticks = 0;
 
 void timer_handler(struct regs* r) {  // NOLINT
-  // printf("aHacks: %d\n", timer_ticks);
   timer_ticks++;
   // Every 18 (by default) ticks ~1 second
-  if (timer_ticks % freq == 0) {
-    printf("%d seconds has passed!\r", (timer_ticks / freq));
-  }
+  // if (timer_ticks % freq == 0) {
+  //   printf("%d seconds has passed!\r", (timer_ticks / freq));
+  // }
 }
 
 void timer_install() {

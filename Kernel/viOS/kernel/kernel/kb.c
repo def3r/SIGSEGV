@@ -1,14 +1,16 @@
 #include <kb.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <system.h>
-#include "kernel/idt.h"
+
+#include <kernel/idt.h>
+#include <kernel/terminal.h>
 
 // BITS:
 // ALT|CTRL|SHIFT|-|-|CAPSLOCK|NUMLOCK|SCROLLLOCK
 //  7   6     5          2         1      0
 uint8_t key_status = 0;
 
+// clang-format off
 /* KBDUS means US Keyboard Layout. This is a scancode table
 *  used to layout a standard US keyboard. I have left some
 *  comments in to give you an idea of what key is what, even
@@ -52,7 +54,8 @@ unsigned char kbdus[128] =
     0,	/* F11 Key */
     0,	/* F12 Key */
     0,	/* All other keys are undefined */
-};	
+};
+// clang-format on
 
 void keyboard_handler(struct regs* r) {
   uint8_t scancode;
@@ -61,7 +64,7 @@ void keyboard_handler(struct regs* r) {
   // Key released, 7th bit set
   if (scancode & 0x80) {
   } else {
-    putchar(kbdus[scancode]);
+    handle_input(kbdus[scancode]);
   }
 }
 

@@ -4,7 +4,7 @@
 
 #include <kernel/gdt.h>
 #include <kernel/idt.h>
-#include <kernel/tty.h>
+#include <kernel/vga.h>
 
 // Since the IDT is not made yet, and there is no gate for expception handling
 // the system will reboot on an exception like this.
@@ -22,13 +22,14 @@ void divBy0() {
 }
 
 void kernel_main(void) {
-  terminal_initialize();
+  vga_init();
   gdt_init();
   idt_install();
   irq_install();
   timer_install();
   kb_install();
-  __asm__ __volatile__("sti");
+  __asm__ __volatile__("sti");  // enable interrupts
+
   printf("YAY BOO! YAY BOO!\n");
   // divBy0();
 

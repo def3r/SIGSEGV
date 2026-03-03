@@ -1,15 +1,15 @@
 [
   {
-    "file": "arch/i386/tty.c",
+    "file": "arch/i386/vga.c",
     "arguments": [
       "i686-elf-gcc",
-      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/sysroot",
+      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/sysroot",
       "-isystem=/usr/include",
       "-MD",
       "-c",
-      "arch/i386/tty.c",
+      "arch/i386/vga.c",
       "-o",
-      "arch/i386/tty.o",
+      "arch/i386/vga.o",
       "-std=gnu11",
       "-O2",
       "-g",
@@ -19,14 +19,14 @@
       "-D__is_kernel",
       "-Iinclude"
     ],
-    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/kernel",
-    "output": "arch/i386/tty.o"
+    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/kernel",
+    "output": "arch/i386/vga.o"
   },
   {
     "file": "arch/i386/gdt.c",
     "arguments": [
       "i686-elf-gcc",
-      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/sysroot",
+      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/sysroot",
       "-isystem=/usr/include",
       "-MD",
       "-c",
@@ -42,14 +42,14 @@
       "-D__is_kernel",
       "-Iinclude"
     ],
-    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/kernel",
+    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/kernel",
     "output": "arch/i386/gdt.o"
   },
   {
     "file": "arch/i386/idt.c",
     "arguments": [
       "i686-elf-gcc",
-      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/sysroot",
+      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/sysroot",
       "-isystem=/usr/include",
       "-MD",
       "-c",
@@ -65,14 +65,14 @@
       "-D__is_kernel",
       "-Iinclude"
     ],
-    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/kernel",
+    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/kernel",
     "output": "arch/i386/idt.o"
   },
   {
     "file": "arch/i386/isrs.c",
     "arguments": [
       "i686-elf-gcc",
-      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/sysroot",
+      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/sysroot",
       "-isystem=/usr/include",
       "-MD",
       "-c",
@@ -88,14 +88,14 @@
       "-D__is_kernel",
       "-Iinclude"
     ],
-    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/kernel",
+    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/kernel",
     "output": "arch/i386/isrs.o"
   },
   {
     "file": "arch/i386/irq.c",
     "arguments": [
       "i686-elf-gcc",
-      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/sysroot",
+      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/sysroot",
       "-isystem=/usr/include",
       "-MD",
       "-c",
@@ -111,14 +111,14 @@
       "-D__is_kernel",
       "-Iinclude"
     ],
-    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/kernel",
+    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/kernel",
     "output": "arch/i386/irq.o"
   },
   {
     "file": "arch/i386/timer.c",
     "arguments": [
       "i686-elf-gcc",
-      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/sysroot",
+      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/sysroot",
       "-isystem=/usr/include",
       "-MD",
       "-c",
@@ -134,14 +134,37 @@
       "-D__is_kernel",
       "-Iinclude"
     ],
-    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/kernel",
+    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/kernel",
     "output": "arch/i386/timer.o"
+  },
+  {
+    "file": "arch/i386/terminal.c",
+    "arguments": [
+      "i686-elf-gcc",
+      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/sysroot",
+      "-isystem=/usr/include",
+      "-MD",
+      "-c",
+      "arch/i386/terminal.c",
+      "-o",
+      "arch/i386/terminal.o",
+      "-std=gnu11",
+      "-O2",
+      "-g",
+      "-ffreestanding",
+      "-Wall",
+      "-Wextra",
+      "-D__is_kernel",
+      "-Iinclude"
+    ],
+    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/kernel",
+    "output": "arch/i386/terminal.o"
   },
   {
     "file": "kernel/kernel.c",
     "arguments": [
       "i686-elf-gcc",
-      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/sysroot",
+      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/sysroot",
       "-isystem=/usr/include",
       "-MD",
       "-c",
@@ -157,14 +180,14 @@
       "-D__is_kernel",
       "-Iinclude"
     ],
-    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/kernel",
+    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/kernel",
     "output": "kernel/kernel.o"
   },
   {
     "file": "kernel/kb.c",
     "arguments": [
       "i686-elf-gcc",
-      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/sysroot",
+      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/sysroot",
       "-isystem=/usr/include",
       "-MD",
       "-c",
@@ -180,7 +203,7 @@
       "-D__is_kernel",
       "-Iinclude"
     ],
-    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/kernel",
+    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/kernel",
     "output": "kernel/kb.o"
   }
 ]

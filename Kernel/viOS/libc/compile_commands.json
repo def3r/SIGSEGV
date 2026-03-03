@@ -3,7 +3,7 @@
     "file": "stdio/printf.c",
     "arguments": [
       "i686-elf-gcc",
-      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/sysroot",
+      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/sysroot",
       "-isystem=/usr/include",
       "-MD",
       "-c",
@@ -20,14 +20,14 @@
       "-Iinclude",
       "-D__is_libk"
     ],
-    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/libc",
+    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/libc",
     "output": "stdio/printf.libk.o"
   },
   {
     "file": "stdio/putchar.c",
     "arguments": [
       "i686-elf-gcc",
-      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/sysroot",
+      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/sysroot",
       "-isystem=/usr/include",
       "-MD",
       "-c",
@@ -44,14 +44,14 @@
       "-Iinclude",
       "-D__is_libk"
     ],
-    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/libc",
+    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/libc",
     "output": "stdio/putchar.libk.o"
   },
   {
     "file": "stdio/puts.c",
     "arguments": [
       "i686-elf-gcc",
-      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/sysroot",
+      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/sysroot",
       "-isystem=/usr/include",
       "-MD",
       "-c",
@@ -68,14 +68,14 @@
       "-Iinclude",
       "-D__is_libk"
     ],
-    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/libc",
+    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/libc",
     "output": "stdio/puts.libk.o"
   },
   {
     "file": "stdlib/abort.c",
     "arguments": [
       "i686-elf-gcc",
-      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/sysroot",
+      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/sysroot",
       "-isystem=/usr/include",
       "-MD",
       "-c",
@@ -92,14 +92,14 @@
       "-Iinclude",
       "-D__is_libk"
     ],
-    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/libc",
+    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/libc",
     "output": "stdlib/abort.libk.o"
   },
   {
     "file": "string/memcmp.c",
     "arguments": [
       "i686-elf-gcc",
-      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/sysroot",
+      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/sysroot",
       "-isystem=/usr/include",
       "-MD",
       "-c",
@@ -116,14 +116,14 @@
       "-Iinclude",
       "-D__is_libk"
     ],
-    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/libc",
+    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/libc",
     "output": "string/memcmp.libk.o"
   },
   {
     "file": "string/memcpy.c",
     "arguments": [
       "i686-elf-gcc",
-      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/sysroot",
+      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/sysroot",
       "-isystem=/usr/include",
       "-MD",
       "-c",
@@ -140,14 +140,14 @@
       "-Iinclude",
       "-D__is_libk"
     ],
-    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/libc",
+    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/libc",
     "output": "string/memcpy.libk.o"
   },
   {
     "file": "string/memmove.c",
     "arguments": [
       "i686-elf-gcc",
-      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/sysroot",
+      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/sysroot",
       "-isystem=/usr/include",
       "-MD",
       "-c",
@@ -164,14 +164,14 @@
       "-Iinclude",
       "-D__is_libk"
     ],
-    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/libc",
+    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/libc",
     "output": "string/memmove.libk.o"
   },
   {
     "file": "string/memset.c",
     "arguments": [
       "i686-elf-gcc",
-      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/sysroot",
+      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/sysroot",
       "-isystem=/usr/include",
       "-MD",
       "-c",
@@ -188,14 +188,14 @@
       "-Iinclude",
       "-D__is_libk"
     ],
-    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/libc",
+    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/libc",
     "output": "string/memset.libk.o"
   },
   {
     "file": "string/strlen.c",
     "arguments": [
       "i686-elf-gcc",
-      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/sysroot",
+      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/sysroot",
       "-isystem=/usr/include",
       "-MD",
       "-c",
@@ -212,7 +212,7 @@
       "-Iinclude",
       "-D__is_libk"
     ],
-    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/meatySkeleton/libc",
+    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/libc",
     "output": "string/strlen.libk.o"
   }
 ]
