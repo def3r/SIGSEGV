@@ -10,6 +10,8 @@
 //  7   6     5          2         1      0
 uint8_t key_status = 0;
 
+// Src: http://www.osdever.net/bkerndev/Docs/keyboard.htm
+//
 // clang-format off
 /* KBDUS means US Keyboard Layout. This is a scancode table
 *  used to layout a standard US keyboard. I have left some
