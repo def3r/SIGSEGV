@@ -19,7 +19,6 @@ typedef enum vga_cursor_types { UNDERLINE, BLOCK } CursorTypes;
 static uint16_t* vga_buffer;
 
 static vga_pos vga_cursor;
-static size_t vga_offset;
 static size_t vga_total_lines;
 static size_t vga_max_lines;
 static size_t vga_line_range_min;
@@ -27,6 +26,7 @@ static size_t vga_line_range_max;
 
 static uint8_t vga_color;
 static bool disable_scroll = false;
+static bool state_lock = false;
 
 static void (*vga_scroll_cb)();
 
@@ -145,6 +145,9 @@ void vga_putchar(char c) {
   if (vga_cursor.y == VGA_WIDTH) {
     vga_cursor.y = 0;
     vga_cursor.x++;
+    if (!state_lock) {
+      vga_total_lines++;
+    }
   }
 
   // Actually scroll through the memory
@@ -225,11 +228,13 @@ uint8_t vga_get_color() {
 void vga_memline_fill_with(size_t x, size_t y, char c) {
   vga_pos save_cursor = vga_cursor;
   vga_cursor.x = x, vga_cursor.y = y;
+  state_lock = true;
   disable_scroll = true;
   for (uint8_t i = y; i < VGA_WIDTH; i++) {
     vga_putchar(c);
   }
   disable_scroll = false;
+  state_lock = true;
   vga_cursor = save_cursor;
 }
 
@@ -266,4 +271,8 @@ void vga_swap_memline(size_t row1, size_t row2) {
 
 void vga_set_scroll_cb(void (*cb)()) {
   vga_scroll_cb = cb;
+}
+
+size_t vga_get_total_lines() {
+  return vga_total_lines;
 }

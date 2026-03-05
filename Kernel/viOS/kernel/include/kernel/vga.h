@@ -43,7 +43,6 @@ void vga_set_cursor_pos(size_t x, size_t y, bool scroll2view);
 void vga_set_cursor_block();
 void vga_set_cursor_underline();
 
-void vga_get_cur_memline_range(size_t res[2]);
 void vga_set_max_lines(size_t n);
 uint8_t vga_screen_height();
 uint8_t vga_screen_width();
@@ -54,9 +53,11 @@ void vga_set_color_from(enum vga_color fg, enum vga_color bg);
 void vga_set_color(uint8_t color);
 uint8_t vga_get_color();
 
+void vga_get_cur_memline_range(size_t res[2]);
 void vga_memline_fill_with(size_t x, size_t y, char c);
 void vga_cur_memline_fill_with(char c);
 void vga_swap_memline(size_t row1, size_t row2);
+size_t vga_get_total_lines();
 
 void vga_set_scroll_cb(void (*cb)());
 
