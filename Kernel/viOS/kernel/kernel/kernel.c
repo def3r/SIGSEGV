@@ -4,7 +4,10 @@
 
 #include <kernel/gdt.h>
 #include <kernel/idt.h>
+#include <kernel/terminal.h>
 #include <kernel/vga.h>
+
+// Some Interesting Examples {{{
 
 // Since the IDT is not made yet, and there is no gate for expception handling
 // the system will reboot on an exception like this.
@@ -21,6 +24,8 @@ void divBy0() {
   // and not int 0!
 }
 
+// }}}
+
 void kernel_main(void) {
   vga_init();
   gdt_init();
@@ -30,10 +35,15 @@ void kernel_main(void) {
   kb_install();
   __asm__ __volatile__("sti");  // enable interrupts
 
-  printf("YAY BOO! YAY BOO!\n");
   // divBy0();
-
   printf("Interrupts enabled. Waiting...\n");
+  printf("ViOS\n");
+
+  term_init();
+
+  // TODO: Eliminate busy waiting
   while (1) {
   }
 }
+
+// vim: foldmethod=marker

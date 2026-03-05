@@ -3,11 +3,9 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <system.h>
 
 #include <kernel/vga.h>
-
-#include "system.h"
-#include "vga.h"
 
 static const size_t VGA_WIDTH = 80;
 static const size_t VGA_HEIGHT = 25;
@@ -18,18 +16,26 @@ static uint16_t* const VGA_MEMORY = (uint16_t*)VGA_MEMORYLOC;
 
 typedef enum vga_cursor_types { UNDERLINE, BLOCK } CursorTypes;
 
-typedef struct vga_pos {
-  size_t x, y;
-} vga_pos;
+static uint16_t* vga_buffer;
 
 static vga_pos vga_cursor;
 static size_t vga_offset;
-static uint8_t vga_color;
-static uint16_t* vga_buffer;
+static size_t vga_total_lines;
 static size_t vga_max_lines;
+static size_t vga_line_range_min;
+static size_t vga_line_range_max;
 
-static void vga_setcolor(uint8_t color) {
-  vga_color = color;
+static uint8_t vga_color;
+static bool disable_scroll = false;
+
+static void (*vga_scroll_cb)();
+
+static inline uint8_t vga_entry_color(enum vga_color fg, enum vga_color bg) {
+  return fg | bg << 4;
+}
+
+static inline uint16_t vga_entry(unsigned char uc, uint8_t color) {
+  return (uint16_t)uc | (uint16_t)color << 8;
 }
 
 static void vga_putentryat(unsigned char c, uint8_t color, size_t x, size_t y) {
@@ -52,11 +58,22 @@ static void vga_scroll(int line) {
 // http://www.osdever.net/FreeVGA/vga/crtcreg.htm#0C
 // Accepts only 16 bits of offset (base is VGA_MEMORY)
 static void vga_scroll2() {
-  vga_offset++;
+  int8_t scroll = (vga_cursor.x < vga_line_range_min) ? -1 : 1;
+  vga_line_range_min += scroll;
+  vga_line_range_max += scroll;
   outb(0x3D4, 0x0D);
-  outb(0x3D5, (vga_offset * VGA_WIDTH & 0xFF));
+  outb(0x3D5, (vga_line_range_min * VGA_WIDTH & 0xFF));
   outb(0x3D4, 0x0C);
-  outb(0x3D5, ((vga_offset * VGA_WIDTH >> 8) & 0xFF));
+  outb(0x3D5, ((vga_line_range_min * VGA_WIDTH >> 8) & 0xFF));
+
+  if (vga_scroll_cb) {
+    vga_scroll_cb();
+  }
+}
+
+bool vga_must_scroll() {
+  return (vga_cursor.x < vga_line_range_min ||
+          vga_cursor.x > vga_line_range_max);
 }
 
 static void vga_delete_last_line() {
@@ -107,6 +124,8 @@ void vga_init(void) {
     }
   }
   vga_max_lines = VGA_HEIGHT - 1;
+  vga_line_range_min = 0;
+  vga_line_range_max = vga_max_lines;
   vga_set_cursor_block();
 }
 
@@ -118,6 +137,7 @@ void vga_putchar(char c) {
   } else if (uc == '\n') {
     vga_cursor.y = 0;
     vga_cursor.x++;
+    vga_total_lines++;
   } else {
     vga_putentryat(uc, vga_color, vga_cursor.y, vga_cursor.x);
     vga_cursor.y++;
@@ -128,7 +148,7 @@ void vga_putchar(char c) {
   }
 
   // Actually scroll through the memory
-  if (vga_cursor.x > VGA_HEIGHT + vga_offset - 1) {
+  if (!disable_scroll && vga_must_scroll()) {
     vga_scroll2();
   }
   vga_update_cursor();
@@ -155,22 +175,95 @@ void vga_cursor_right(size_t n) {
 
 void vga_cursor_up(size_t n) {
   vga_cursor.x = DEC(vga_cursor.x, n);
-  size_t offset = DEC(vga_cursor.x, VGA_HEIGHT);
-  if (offset != vga_offset &&
-      (offset / VGA_HEIGHT) != (vga_offset / VGA_HEIGHT)) {
-    vga_offset = offset;
+  if (!disable_scroll && vga_must_scroll()) {
     vga_scroll2();
   }
   vga_update_cursor();
 }
 
 void vga_cursor_down(size_t n) {
-  vga_cursor.x = MIN(vga_cursor.x + n, VGA_HEIGHT + vga_offset - 1);
-  size_t offset = DEC(vga_cursor.x, VGA_HEIGHT - 1);
-  if (offset != vga_offset &&
-      (offset / VGA_HEIGHT) != (vga_offset / VGA_HEIGHT)) {
-    vga_offset = offset;
+  vga_cursor.x = MIN(vga_cursor.x + n, vga_total_lines);
+  if (!disable_scroll && vga_must_scroll()) {
     vga_scroll2();
   }
   vga_update_cursor();
+}
+
+uint8_t vga_screen_height() {
+  return VGA_HEIGHT;
+}
+
+uint8_t vga_screen_width() {
+  return VGA_WIDTH;
+}
+
+vga_pos vga_get_cursor_pos() {
+  return (vga_pos){.x = vga_cursor.x, .y = vga_cursor.y};
+}
+
+void vga_set_cursor_pos(size_t x, size_t y, bool scroll2view) {
+  vga_cursor.x = x, vga_cursor.y = y;
+  vga_update_cursor();
+  // TODO: Implement scroll2view
+  if (scroll2view) {
+    vga_scroll2();
+  }
+}
+
+void vga_set_color_from(enum vga_color fg, enum vga_color bg) {
+  vga_color = vga_entry_color(fg, bg);
+}
+
+void vga_set_color(uint8_t color) {
+  vga_color = color;
+}
+
+uint8_t vga_get_color() {
+  return vga_color;
+}
+
+void vga_memline_fill_with(size_t x, size_t y, char c) {
+  vga_pos save_cursor = vga_cursor;
+  vga_cursor.x = x, vga_cursor.y = y;
+  disable_scroll = true;
+  for (uint8_t i = y; i < VGA_WIDTH; i++) {
+    vga_putchar(c);
+  }
+  disable_scroll = false;
+  vga_cursor = save_cursor;
+}
+
+void vga_cur_memline_fill_with(char c) {
+  vga_memline_fill_with(vga_cursor.x, 0, c);
+}
+
+void vga_set_max_lines(size_t n) {
+  vga_max_lines = n;
+  vga_line_range_max = n;
+}
+
+void vga_disable_scroll() {
+  disable_scroll = true;
+}
+
+void vga_enable_scroll() {
+  disable_scroll = false;
+}
+
+void vga_get_cur_memline_range(size_t res[2]) {
+  res[0] = vga_line_range_min, res[1] = vga_line_range_max;
+}
+
+void vga_swap_memline(size_t row1, size_t row2) {
+  size_t linewidth = VGA_WIDTH * 2;
+  char bfr[linewidth];
+  size_t pos1 = row1 * VGA_WIDTH;
+  size_t pos2 = row2 * VGA_WIDTH;
+  memcpy(bfr, VGA_MEMORY + pos1, linewidth);
+  memcpy(VGA_MEMORY + pos1, VGA_MEMORY + pos2, linewidth);
+  memcpy(VGA_MEMORY + pos2, bfr, linewidth);
+}
+
+void vga_set_scroll_cb(void (*cb)()) {
+  vga_scroll_cb = cb;
 }
