@@ -1,16 +1,12 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <system.h>
 
 #include <kernel/vga.h>
-
-static const size_t VGA_WIDTH = 80;
-static const size_t VGA_HEIGHT = 25;
-static uint32_t const VGA_MEMORYLOC = 0xB8000;
-static uint16_t* const VGA_MEMORY = (uint16_t*)VGA_MEMORYLOC;
 
 #define DEC(x, n) (x <= n) ? 0 : x - n
 
@@ -120,13 +116,63 @@ void vga_init(void) {
   for (size_t y = 0; y < VGA_HEIGHT; y++) {
     for (size_t x = 0; x < VGA_WIDTH; x++) {
       const size_t index = y * VGA_WIDTH + x;
-      vga_buffer[index] = vga_entry(' ', vga_color);
+      vga_buffer[index] = vga_entry('\0', vga_color);
     }
   }
   vga_max_lines = VGA_HEIGHT - 1;
   vga_line_range_min = 0;
   vga_line_range_max = vga_max_lines;
   vga_set_cursor_block();
+}
+
+size_t vga_get_cur_memline_len() {
+  size_t n = 0;
+  uint16_t* curline = VGA_MEMORY + (vga_cursor.x * VGA_WIDTH);
+  for (; n < VGA_WIDTH; n++) {
+    if ((curline[n] & 0xFF) == '\0') {
+      break;
+    }
+  }
+  return n;
+}
+
+void vga_inschar(char c) {
+  unsigned char uc = c;
+
+  if (uc == '\r') {
+    vga_cursor.y = 0;
+  } else if (uc == '\n') {
+    vga_cursor.y = 0;
+    vga_cursor.x++;
+    vga_total_lines++;
+  } else {
+    size_t curline_len = vga_get_cur_memline_len();
+    if (curline_len != vga_cursor.y + 1) {
+      uint16_t* curline = vga_buffer + (vga_cursor.x * VGA_WIDTH);
+      if (curline_len + 1 < VGA_WIDTH) {
+        for (size_t y = curline_len; y > vga_cursor.y; y--) {
+          curline[y] = curline[y - 1];
+        }
+      } else {
+        // TODO: Shift all lines following by 1
+      }
+    }
+    vga_putentryat(uc, vga_color, vga_cursor.y, vga_cursor.x);
+    vga_cursor.y++;
+  }
+  if (vga_cursor.y == VGA_WIDTH) {
+    vga_cursor.y = 0;
+    vga_cursor.x++;
+    if (!state_lock) {
+      vga_total_lines++;
+    }
+  }
+
+  // Actually scroll through the memory
+  if (!disable_scroll && vga_must_scroll()) {
+    vga_scroll2();
+  }
+  vga_update_cursor();
 }
 
 void vga_putchar(char c) {
@@ -275,4 +321,18 @@ void vga_set_scroll_cb(void (*cb)()) {
 
 size_t vga_get_total_lines() {
   return vga_total_lines;
+}
+
+void vga_get_cur_memline(char res[VGA_WIDTH * 2]) {
+  if (res == 0) {
+    return;
+  }
+  memcpy(res, VGA_MEMORY + (vga_cursor.x * VGA_WIDTH), VGA_WIDTH * 2);
+}
+
+void vga_set_cur_memline(char res[VGA_WIDTH * 2]) {
+  if (res == 0) {
+    return;
+  }
+  memcpy(VGA_MEMORY + (vga_cursor.x * VGA_WIDTH), res, VGA_WIDTH * 2);
 }

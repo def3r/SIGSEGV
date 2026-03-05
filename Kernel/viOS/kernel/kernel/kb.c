@@ -26,7 +26,7 @@ unsigned char kbdus[2][128] =
     '9', '0', '-', '=', '\b',	/* Backspace */
     '\t',			/* Tab */
     'q', 'w', 'e', 'r',	/* 19 */
-    't', 'y', 'u', 'i', 'o', 'p', '[', ']', '\n',	/* Enter key */
+    't', 'y', 'u', 'i', 'o', 'p', '[', ']', 13,	/* Enter key */
       0,			/* 29   - Control */
     'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';',	/* 39 */
    '\'', '`',   0,		/* Left shift */
@@ -66,7 +66,7 @@ unsigned char kbdus[2][128] =
     '(', ')', '_', '+', '\b',	/* Backspace */
     '\t',			/* Tab */
     'Q', 'W', 'E', 'R',	/* 19 */
-    'T', 'Y', 'U', 'I', 'O', 'P', '{', '}', '\n',	/* Enter key */
+    'T', 'Y', 'U', 'I', 'O', 'P', '{', '}', 13,	/* Enter key */
       0,			/* 29   - Control */
     'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ':',	/* 39 */
    '\"', '~',   0,		/* Left shift */

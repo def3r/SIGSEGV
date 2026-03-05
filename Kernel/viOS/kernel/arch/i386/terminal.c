@@ -63,8 +63,29 @@ static void handle_insert_mode(uint8_t in) {
       vga_set_cursor_block();
       term_update();
       break;
+    case '\b': {
+      save_cursor = vga_get_cursor_pos();
+      if (save_cursor.y == 0) {
+        break;
+      }
+      char res[VGA_WIDTH * 2];
+      vga_get_cur_memline(res);
+      for (size_t y = save_cursor.y * 2; y < VGA_WIDTH * 2; y += 2) {
+        res[y - 2] = res[y];
+        res[y - 1] = res[y + 1];
+      }
+      // TODO: This should technically bring next line char to cur line but for
+      // now we just null the last char to avoid duplication
+      res[VGA_WIDTH * 2] = '\0';
+      vga_set_cur_memline(res);
+      vga_cursor_left(1);
+      break;
+    }
+    case 13:  // Enter
+      // TODO: Implement Enter
+      in = '\n';
     default:
-      vga_putchar(in);
+      vga_inschar(in);
   }
 }
 

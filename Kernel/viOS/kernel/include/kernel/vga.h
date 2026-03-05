@@ -5,6 +5,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
+static const size_t VGA_WIDTH = 80;
+static const size_t VGA_HEIGHT = 25;
+static uint32_t const VGA_MEMORYLOC = 0xB8000;
+static uint16_t* const VGA_MEMORY = (uint16_t*)VGA_MEMORYLOC;
+
 enum vga_color {
   VGA_COLOR_BLACK = 0,
   VGA_COLOR_BLUE = 1,
@@ -29,6 +34,7 @@ typedef struct vga_pos {
 } vga_pos;
 
 void vga_init(void);
+void vga_inschar(char c);
 void vga_putchar(char c);
 void vga_write(const char* data, size_t size);
 void vga_writestring(const char* data);
@@ -60,5 +66,7 @@ void vga_swap_memline(size_t row1, size_t row2);
 size_t vga_get_total_lines();
 
 void vga_set_scroll_cb(void (*cb)());
+void vga_get_cur_memline(char res[VGA_WIDTH * 2]);
+void vga_set_cur_memline(char res[VGA_WIDTH * 2]);
 
 #endif  // !KERNEL_TTY_H_
