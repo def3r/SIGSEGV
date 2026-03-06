@@ -1,9 +1,14 @@
 #include <kernel/terminal.h>
 #include <kernel/vga.h>
+
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 typedef enum TermState { NORMAL = 0, INSERT = 1 } TermState;
+typedef enum Direction { FWD = 1, BWD = -1 } Direction;
 
 static TermState mode = NORMAL;
 static vga_pos stlpos;
@@ -34,6 +39,64 @@ static void term_scroll_cb() {
   stlpos.x = vga_cur_range[1] + 1, stlpos.y = 0;
 }
 
+static void term_skip_short_word(Direction dir) {
+  save_cursor = vga_get_cursor_pos();
+  // TODO: skip if reached end of line for now
+  if ((save_cursor.y == VGA_WIDTH - 1 && dir == FWD) ||
+      (save_cursor.y == 0 && dir == BWD)) {
+    return;
+  }
+
+  uint16_t curline[VGA_WIDTH];
+  vga_get_cur_memline((char*)curline);
+  size_t y = save_cursor.y;
+  y = y + dir;
+  while (y < VGA_WIDTH && aiswspace(curline[y] & 0xFF)) {
+    y = y + dir;
+  }
+  while (y < VGA_WIDTH && aisalphanum(curline[y] & 0xFF)) {
+    y = y + dir;
+  }
+  y += -1 * dir * (y != save_cursor.y + dir);
+  vga_set_cursor_pos(save_cursor.x, y, false);
+}
+
+static void term_skip_to_last_char() {
+  save_cursor = vga_get_cursor_pos();
+  vga_set_cursor_pos(save_cursor.x, vga_get_cur_memline_len(), false);
+}
+
+static void term_skip_to_first_char() {
+  save_cursor = vga_get_cursor_pos();
+  uint16_t curline[VGA_WIDTH];
+  vga_get_cur_memline((char*)curline);
+  size_t y = 0;
+  for (; y < MIN(VGA_WIDTH, vga_get_cur_memline_len()) &&
+         aiswspace(curline[y] & 0xFF);
+       y++)
+    ;
+  vga_set_cursor_pos(save_cursor.x, y, false);
+}
+
+static void term_del_char(Direction dir) {
+  save_cursor = vga_get_cursor_pos();
+  if (save_cursor.y == 0 && dir == BWD) {
+    return;
+  }
+  uint16_t res[VGA_WIDTH];
+  vga_get_cur_memline((char*)res);
+  for (size_t y = save_cursor.y + (dir == FWD); y < VGA_WIDTH; y++) {
+    res[y - 1] = res[y];
+  }
+  // TODO: This should technically bring next line char to cur line but for
+  // now we just null the last char to avoid duplication
+  res[VGA_WIDTH - 1] = (res[VGA_WIDTH - 1] & 0xFF00) | '\0';
+  vga_set_cur_memline((char*)res);
+  if (dir == BWD) {
+    vga_cursor_left(1);
+  }
+}
+
 static void handle_normal_mode(uint8_t in) {
   switch (in) {
     case 'i':
@@ -53,6 +116,25 @@ static void handle_normal_mode(uint8_t in) {
     case 'l':
       vga_cursor_right(1);
       break;
+
+    // Line motions
+    case 'e':
+      term_skip_short_word(FWD);
+      break;
+    case 'b':
+      term_skip_short_word(BWD);
+      break;
+    case '$':
+      term_skip_to_last_char();
+      break;
+    case '_':
+      term_skip_to_first_char();
+      break;
+
+    // Line Editing
+    case 'x':
+      term_del_char(FWD);
+      break;
   }
 }
 
@@ -63,24 +145,9 @@ static void handle_insert_mode(uint8_t in) {
       vga_set_cursor_block();
       term_update();
       break;
-    case '\b': {
-      save_cursor = vga_get_cursor_pos();
-      if (save_cursor.y == 0) {
-        break;
-      }
-      char res[VGA_WIDTH * 2];
-      vga_get_cur_memline(res);
-      for (size_t y = save_cursor.y * 2; y < VGA_WIDTH * 2; y += 2) {
-        res[y - 2] = res[y];
-        res[y - 1] = res[y + 1];
-      }
-      // TODO: This should technically bring next line char to cur line but for
-      // now we just null the last char to avoid duplication
-      res[VGA_WIDTH * 2] = '\0';
-      vga_set_cur_memline(res);
-      vga_cursor_left(1);
+    case '\b':
+      term_del_char(BWD);
       break;
-    }
     case 13:  // Enter
       // TODO: Implement Enter
       in = '\n';

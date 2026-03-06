@@ -1,5 +1,28 @@
 [
   {
+    "file": "arch/i386/init.c",
+    "arguments": [
+      "i686-elf-gcc",
+      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/sysroot",
+      "-isystem=/usr/include",
+      "-MD",
+      "-c",
+      "arch/i386/init.c",
+      "-o",
+      "arch/i386/init.o",
+      "-std=gnu11",
+      "-O2",
+      "-g",
+      "-ffreestanding",
+      "-Wall",
+      "-Wextra",
+      "-D__is_kernel",
+      "-Iinclude"
+    ],
+    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/kernel",
+    "output": "arch/i386/init.o"
+  },
+  {
     "file": "arch/i386/vga.c",
     "arguments": [
       "i686-elf-gcc",

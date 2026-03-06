@@ -68,5 +68,6 @@ size_t vga_get_total_lines();
 void vga_set_scroll_cb(void (*cb)());
 void vga_get_cur_memline(char res[VGA_WIDTH * 2]);
 void vga_set_cur_memline(char res[VGA_WIDTH * 2]);
+size_t vga_get_cur_memline_len();
 
 #endif  // !KERNEL_TTY_H_

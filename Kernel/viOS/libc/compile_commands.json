@@ -96,6 +96,30 @@
     "output": "stdlib/abort.libk.o"
   },
   {
+    "file": "string/aisalphanum.c",
+    "arguments": [
+      "i686-elf-gcc",
+      "--sysroot=/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/sysroot",
+      "-isystem=/usr/include",
+      "-MD",
+      "-c",
+      "string/aisalphanum.c",
+      "-o",
+      "string/aisalphanum.libk.o",
+      "-std=gnu11",
+      "-O2",
+      "-g",
+      "-ffreestanding",
+      "-Wall",
+      "-Wextra",
+      "-D__is_libc",
+      "-Iinclude",
+      "-D__is_libk"
+    ],
+    "directory": "/home/asbestos/part9/Asbestos/SIGSEGV/Kernel/viOS/libc",
+    "output": "string/aisalphanum.libk.o"
+  },
+  {
     "file": "string/memcmp.c",
     "arguments": [
       "i686-elf-gcc",

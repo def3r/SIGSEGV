@@ -4,8 +4,9 @@
 
 #include <kernel/gdt.h>
 #include <kernel/idt.h>
-#include <kernel/terminal.h>
 #include <kernel/vga.h>
+
+extern void vios_init_proc();
 
 // Some Interesting Examples {{{
 
@@ -39,11 +40,9 @@ void kernel_main(void) {
   printf("Interrupts enabled. Waiting...\n");
   printf("ViOS\n");
 
-  term_init();
+  vios_init_proc();
 
-  // TODO: Eliminate busy waiting
-  while (1) {
-  }
+  printf("Kernel Panic, init proc exited\n");
 }
 
 // vim: foldmethod=marker
