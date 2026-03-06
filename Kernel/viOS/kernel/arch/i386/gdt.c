@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <kernel/gdt.h>
+#include <arch/gdt.h>
 
 void encodeGdtEntry(uint8_t *target, struct GDT source) {
   // Check the limit to make sure that it can be encoded

@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <system.h>
 
-#include <kernel/idt.h>
+#include <arch/idt.h>
 #include <kernel/terminal.h>
 
 // BITS:

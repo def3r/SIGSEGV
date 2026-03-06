@@ -39,7 +39,15 @@ static void term_scroll_cb() {
   stlpos.x = vga_cur_range[1] + 1, stlpos.y = 0;
 }
 
-static void term_skip_short_word(Direction dir) {
+static bool term_not_aiswspace(const char c) {
+  return !aiswspace(c);
+}
+
+static bool term_under_aiaplhanum(const char c) {
+  return aisalphanum(c) || c == '_';
+}
+
+static void term_skip_word(Direction dir, bool (*cmp)(const char)) {
   save_cursor = vga_get_cursor_pos();
   // TODO: skip if reached end of line for now
   if ((save_cursor.y == VGA_WIDTH - 1 && dir == FWD) ||
@@ -54,11 +62,19 @@ static void term_skip_short_word(Direction dir) {
   while (y < VGA_WIDTH && aiswspace(curline[y] & 0xFF)) {
     y = y + dir;
   }
-  while (y < VGA_WIDTH && aisalphanum(curline[y] & 0xFF)) {
+  while (y < VGA_WIDTH && cmp(curline[y] & 0xFF)) {
     y = y + dir;
   }
   y += -1 * dir * (y != save_cursor.y + dir);
   vga_set_cursor_pos(save_cursor.x, y, false);
+}
+
+static void term_skip_short_word(Direction dir) {
+  term_skip_word(dir, term_under_aiaplhanum);
+}
+
+static void term_skip_long_word(Direction dir) {
+  term_skip_word(dir, term_not_aiswspace);
 }
 
 static void term_skip_to_last_char() {
@@ -98,12 +114,23 @@ static void term_del_char(Direction dir) {
 }
 
 static void handle_normal_mode(uint8_t in) {
+  uint8_t cursor_move = 0;
+  Direction dir = 0;
+  void (*handler)() = NULL;
+
   switch (in) {
+    case 's':
+      term_del_char(FWD);
+      cursor_move = -1;
+    case 'a':
+      cursor_move++;
+      vga_cursor_right(cursor_move);
     case 'i':
       mode = INSERT;
       vga_set_cursor_underline();
       term_update();
       break;
+
     case 'h':
       vga_cursor_left(1);
       break;
@@ -117,24 +144,36 @@ static void handle_normal_mode(uint8_t in) {
       vga_cursor_right(1);
       break;
 
-    // Line motions
-    case 'e':
-      term_skip_short_word(FWD);
-      break;
-    case 'b':
-      term_skip_short_word(BWD);
-      break;
-    case '$':
-      term_skip_to_last_char();
-      break;
-    case '_':
-      term_skip_to_first_char();
-      break;
-
     // Line Editing
     case 'x':
       term_del_char(FWD);
       break;
+
+    // Line motions
+    case 'b':
+      dir = BWD - 1;
+    case 'e':
+      dir++;
+      term_skip_short_word(dir);
+      break;
+
+    case 'B':
+      dir = BWD - 1;
+    case 'E':
+      dir++;
+      term_skip_long_word(dir);
+      break;
+
+    case '$':
+      term_skip_to_last_char();
+    case '_':
+      term_skip_to_first_char();
+      break;
+
+    default:
+      if (handler) {
+        handler();
+      }
   }
 }
 

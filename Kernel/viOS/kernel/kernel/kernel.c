@@ -2,8 +2,8 @@
 #include <stdio.h>
 #include <system.h>
 
-#include <kernel/gdt.h>
-#include <kernel/idt.h>
+#include <arch/gdt.h>
+#include <arch/idt.h>
 #include <kernel/vga.h>
 
 extern void vios_init_proc();

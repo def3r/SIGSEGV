@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <kernel/idt.h>
+#include <arch/idt.h>
 
 struct idt_entry idt[256];
 struct idt_ptr idtp;
