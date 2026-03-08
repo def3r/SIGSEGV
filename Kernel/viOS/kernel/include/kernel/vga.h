@@ -5,8 +5,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-static const size_t VGA_WIDTH = 80;
-static const size_t VGA_HEIGHT = 25;
+#define VGA_WIDTH 80
+#define VGA_HEIGHT 25
 static uint32_t const VGA_MEMORYLOC = 0xB8000;
 static uint16_t* const VGA_MEMORY = (uint16_t*)VGA_MEMORYLOC;
 
@@ -30,44 +30,27 @@ enum vga_color {
 };
 
 typedef struct vga_pos {
-  size_t x, y;
+  size_t row, col;
 } vga_pos;
 
+inline uint16_t vga_entry(unsigned char uc, uint8_t color) {
+  return (uint16_t)uc | (uint16_t)color << 8;
+}
+void vga_putentry(uint16_t entry, size_t row, size_t col);
+void vga_mem_cpy(size_t row, size_t col, uint16_t* src, size_t size);
+inline uint8_t vga_entry_color(enum vga_color fg, enum vga_color bg) {
+  return fg | bg << 4;
+}
+
 void vga_init(void);
-void vga_inschar(char c);
 void vga_putchar(char c);
 void vga_write(const char* data, size_t size);
 void vga_writestring(const char* data);
 
-void vga_cursor_left(size_t n);
-void vga_cursor_right(size_t n);
-void vga_cursor_up(size_t n);
-void vga_cursor_down(size_t n);
-
-vga_pos vga_get_cursor_pos();
-void vga_set_cursor_pos(size_t x, size_t y, bool scroll2view);
+void vga_set_cursor_pos(size_t row, size_t col);
 void vga_set_cursor_block();
 void vga_set_cursor_underline();
 
-void vga_set_max_lines(size_t n);
-uint8_t vga_screen_height();
-uint8_t vga_screen_width();
-void vga_disable_scroll();
-void vga_enable_scroll();
-
-void vga_set_color_from(enum vga_color fg, enum vga_color bg);
-void vga_set_color(uint8_t color);
-uint8_t vga_get_color();
-
-void vga_get_cur_memline_range(size_t res[2]);
-void vga_memline_fill_with(size_t x, size_t y, char c);
-void vga_cur_memline_fill_with(char c);
-void vga_swap_memline(size_t row1, size_t row2);
-size_t vga_get_total_lines();
-
 void vga_set_scroll_cb(void (*cb)());
-void vga_get_cur_memline(char res[VGA_WIDTH * 2]);
-void vga_set_cur_memline(char res[VGA_WIDTH * 2]);
-size_t vga_get_cur_memline_len();
 
 #endif  // !KERNEL_TTY_H_

@@ -5,6 +5,7 @@
 #include <arch/gdt.h>
 #include <arch/idt.h>
 #include <kernel/vga.h>
+#include "kernel/terminal.h"
 
 extern void vios_init_proc();
 
@@ -35,6 +36,8 @@ void kernel_main(void) {
   timer_install();
   kb_install();
   __asm__ __volatile__("sti");  // enable interrupts
+
+  term_init();
 
   // divBy0();
   printf("Interrupts enabled. Waiting...\n");
