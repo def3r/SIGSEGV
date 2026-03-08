@@ -100,12 +100,6 @@ void vga_set_cursor_underline() {
 void vga_init(void) {
   vga_color = vga_entry_color(VGA_COLOR_LIGHT_GREEN, VGA_COLOR_BLACK);
   vga_buffer = VGA_MEMORY;
-  for (size_t y = 0; y < VGA_HEIGHT; y++) {
-    for (size_t x = 0; x < VGA_WIDTH; x++) {
-      const size_t index = y * VGA_WIDTH + x;
-      vga_buffer[index] = vga_entry('\0', vga_color);
-    }
-  }
   vga_max_lines = VGA_HEIGHT - 1;
   vga_line_range_min = 0;
   vga_line_range_max = vga_max_lines;

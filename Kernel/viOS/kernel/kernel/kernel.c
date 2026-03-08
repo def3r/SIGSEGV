@@ -37,12 +37,7 @@ void kernel_main(void) {
   kb_install();
   __asm__ __volatile__("sti");  // enable interrupts
 
-  term_init();
-
   // divBy0();
-  printf("Interrupts enabled. Waiting...\n");
-  printf("ViOS\n");
-
   vios_init_proc();
 
   printf("Kernel Panic, init proc exited\n");

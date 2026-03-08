@@ -29,9 +29,10 @@ LIBS:=$(LIBS) $(KERNEL_ARCH_LIBS)
 
 KERNEL_OBJS=\
 $(KERNEL_ARCH_OBJS) \
-kernel/kernel.o \
 kernel/kb.o \
+kernel/kernel.o \
 kernel/init.o \
+kernel/input.o \
 kernel/terminal.o \
 
 OBJS=\

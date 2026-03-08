@@ -4,7 +4,7 @@
 #include <system.h>
 
 #include <arch/idt.h>
-#include <kernel/terminal.h>
+#include <kernel/input.h>
 
 // BITS:
 // ALT|CTRL|SHIFT|-|-|CAPSLOCK|NUMLOCK|SCROLLLOCK

@@ -27,19 +27,33 @@ static size_t total_lines = 0;
 static bool state_lock = false;
 static bool disable_scroll = false;
 static WriteScreen screen;
-static uint8_t vga_color;
+static uint8_t term_color;
 
+static TermMode mode = NORMAL;
+static vga_pos stlpos;
+static enum vga_color stl_bgcolor[2] = {VGA_COLOR_BROWN, VGA_COLOR_GREEN};
+static enum vga_color stl_fgcolor[2] = {VGA_COLOR_WHITE, VGA_COLOR_WHITE};
+
+static bool term_not_aiswspace(const char c) {
+  return !aiswspace(c);
+}
+
+static bool term_under_aiaplhanum(const char c) {
+  return aisalphanum(c) || c == '_';
+}
+
+static void term_memset(uint16_t* dest, uint16_t uc, size_t size) {
+  for (size_t i = 0; i < size; i++) {
+    dest[i] = uc;
+  }
+}
+
+// VGA {{{
 void term_set_cursor_block() {
   vga_set_cursor_block();
 }
 void term_set_cursor_underline() {
   vga_set_cursor_underline();
-}
-
-void term_scroll() {}
-
-bool term_must_scroll() {
-  return (cursor.row < line_range_min || cursor.row > line_range_max);
 }
 
 size_t term_get_cur_memline_len() {
@@ -51,6 +65,17 @@ size_t term_get_cur_memline_len() {
     }
   }
   return n;
+}
+
+void term_flush() {
+  for (size_t row = 0; row < VGA_HEIGHT; row++) {
+    if (!screen.dirty[row]) {
+      continue;
+    }
+    vga_mem_cpy(row, 0, (uint16_t*)buffer[row], VGA_WIDTH);
+    screen.dirty[row] = false;
+  }
+  vga_set_cursor_pos(cursor.row, cursor.col);
 }
 
 void term_inschar(char c) {
@@ -75,7 +100,7 @@ void term_inschar(char c) {
         // TODO: Shift all lines following by 1
       }
     }
-    buffer[cursor.row][cursor.col] = vga_entry(uc, vga_color);
+    buffer[cursor.row][cursor.col] = vga_entry(uc, term_color);
     cursor.col++;
     screen.dirty[cursor.row - line_range_min] = true;
   }
@@ -106,7 +131,7 @@ void term_putchar(char c) {
     total_lines++;
     screen.dirty[cursor.row - line_range_min] = true;
   } else {
-    buffer[cursor.row][cursor.col] = vga_entry(uc, vga_color);
+    buffer[cursor.row][cursor.col] = vga_entry(uc, term_color);
     cursor.col++;
     screen.dirty[cursor.row - line_range_min] = true;
   }
@@ -126,43 +151,10 @@ void term_putchar(char c) {
   // }
 }
 
-void term_flush() {
-  for (size_t row = 0; row < VGA_HEIGHT; row++) {
-    if (!screen.dirty[row]) {
-      continue;
-    }
-    vga_mem_cpy(row, 0, (uint16_t*)buffer[row], VGA_WIDTH);
-    screen.dirty[row] = false;
-  }
-  vga_set_cursor_pos(cursor.row, cursor.col);
-}
-
-void term_write(const char* data, size_t size) {
-  screen.dirty[cursor.row - line_range_min] = true;
-  for (size_t i = 0; i < size; i++) {
-    term_putchar(data[i]);
-  }
-  term_flush();
-}
-
-typedef enum TermState { NORMAL = 0, INSERT = 1 } TermState;
-typedef enum Direction { FWD = 1, BWD = -1 } Direction;
-
-static TermState mode = NORMAL;
-static vga_pos stlpos;
-static enum vga_color stl_bgcolor[2] = {VGA_COLOR_BROWN, VGA_COLOR_GREEN};
-static enum vga_color stl_fgcolor[2] = {VGA_COLOR_WHITE, VGA_COLOR_WHITE};
-
-void term_memset(uint16_t* dest, uint16_t uc, size_t size) {
-  for (size_t i = 0; i < size; i++) {
-    dest[i] = uc;
-  }
-}
-
 static void term_draw_statusline() {
-  uint8_t save_color = vga_color;
-  vga_color = vga_entry_color(stl_fgcolor[mode], stl_bgcolor[mode]);
-  term_memset(buffer[VGA_HEIGHT - 1], vga_entry(' ', vga_color), VGA_WIDTH);
+  uint8_t save_color = term_color;
+  term_color = vga_entry_color(stl_fgcolor[mode], stl_bgcolor[mode]);
+  term_memset(buffer[VGA_HEIGHT - 1], vga_entry(' ', term_color), VGA_WIDTH);
   CursorPos save_cursor = cursor;
   cursor.row = VGA_HEIGHT - 1;
   cursor.col = 0;
@@ -173,11 +165,17 @@ static void term_draw_statusline() {
       total_lines
   );
   // clang-format on
-  vga_color = save_color;
+  term_color = save_color;
   cursor = save_cursor;
   screen.dirty[VGA_HEIGHT - 1] = true;
 }
 
+// }}}
+
+void term_scroll() {}
+bool term_must_scroll() {
+  return (cursor.row < line_range_min || cursor.row > line_range_max);
+}
 static void term_scroll_cb() {
   size_t vga_cur_range[2] = {0, 0};
   // vga_get_cur_memline_range(vga_cur_range);
@@ -185,15 +183,15 @@ static void term_scroll_cb() {
   stlpos.row = vga_cur_range[1] + 1, stlpos.col = 0;
 }
 
-static bool term_not_aiswspace(const char c) {
-  return !aiswspace(c);
+void term_write(const char* data, size_t size) {
+  screen.dirty[cursor.row - line_range_min] = true;
+  for (size_t i = 0; i < size; i++) {
+    term_putchar(data[i]);
+  }
+  term_flush();
 }
 
-static bool term_under_aiaplhanum(const char c) {
-  return aisalphanum(c) || c == '_';
-}
-
-static void term_skip_word(Direction dir, bool (*cmp)(const char)) {
+void term_skip_word(Direction dir, bool (*cmp)(const char)) {
   // TODO: skip if reached end of line for now
   if ((cursor.col == VGA_WIDTH - 1 && dir == FWD) ||
       (cursor.col == 0 && dir == BWD)) {
@@ -213,15 +211,15 @@ static void term_skip_word(Direction dir, bool (*cmp)(const char)) {
   cursor.col = y;
 }
 
-static void term_skip_short_word(Direction dir) {
+void term_skip_short_word(Direction dir) {
   term_skip_word(dir, term_under_aiaplhanum);
 }
 
-static void term_skip_long_word(Direction dir) {
+void term_skip_long_word(Direction dir) {
   term_skip_word(dir, term_not_aiswspace);
 }
 
-static void term_skip_to_last_char() {
+void term_skip_to_last_char() {
   cursor.col = term_get_cur_memline_len();
 }
 
@@ -241,7 +239,7 @@ void term_cursor_down(size_t n) {
   cursor.row = MIN(cursor.row + n, total_lines);
 }
 
-static void term_skip_to_first_char() {
+void term_skip_to_first_char() {
   uint16_t* curline = buffer[cursor.row];
   size_t y = 0;
   for (; y < MIN(VGA_WIDTH, term_get_cur_memline_len()) &&
@@ -251,7 +249,7 @@ static void term_skip_to_first_char() {
   cursor.col = y;
 }
 
-static void term_del_char(Direction dir) {
+void term_del_char(Direction dir) {
   if (cursor.col == 0 && dir == BWD) {
     return;
   }
@@ -268,103 +266,11 @@ static void term_del_char(Direction dir) {
   screen.dirty[cursor.row] = true;
 }
 
-static void handle_normal_mode(uint8_t in) {
-  uint8_t cursor_move = 0;
-  Direction dir = 0;
-  void (*handler)() = NULL;
-
-  switch (in) {
-    case 's':
-      term_del_char(FWD);
-      cursor_move = -1;
-    case 'a':
-      cursor_move++;
-      term_cursor_right(cursor_move);
-    case 'i':
-      mode = INSERT;
-      term_set_cursor_underline();
-      term_update();
-      break;
-
-    case 'h':
-      term_cursor_left(1);
-      break;
-    case 'j':
-      term_cursor_down(1);
-      break;
-    case 'k':
-      term_cursor_up(1);
-      break;
-    case 'l':
-      term_cursor_right(1);
-      break;
-
-    // Line Editing
-    case 'x':
-      term_del_char(FWD);
-      break;
-
-    // Line motions
-    case 'b':
-      dir = BWD - 1;
-    case 'e':
-      dir++;
-      term_skip_short_word(dir);
-      break;
-
-    case 'B':
-      dir = BWD - 1;
-    case 'E':
-      dir++;
-      term_skip_long_word(dir);
-      break;
-
-    case '$':
-      term_skip_to_last_char();
-      break;
-    case '_':
-      term_skip_to_first_char();
-      break;
-
-    default:
-      if (handler) {
-        handler();
-      }
-  }
-}
-
-static void handle_insert_mode(uint8_t in) {
-  switch (in) {
-    case 27:  // Esc
-      mode = NORMAL;
-      term_set_cursor_block();
-      term_update();
-      break;
-    case '\b':
-      term_del_char(BWD);
-      break;
-    case 13:  // Enter
-      // TODO: Implement Enter
-      in = '\n';
-    default:
-      term_inschar(in);
-  }
-}
-
-void handle_input(uint8_t in) {
-  if (mode == NORMAL) {
-    handle_normal_mode(in);
-  } else if (mode == INSERT) {
-    handle_insert_mode(in);
-  }
-  term_update();
-}
-
 void term_init() {
-  vga_color = vga_entry_color(VGA_COLOR_LIGHT_GREEN, VGA_COLOR_BLACK);
+  term_color = vga_entry_color(VGA_COLOR_LIGHT_GREEN, VGA_COLOR_BLACK);
   for (size_t row = 0; row < BUFSIZE; row++) {
     for (size_t col = 0; col < VGA_WIDTH; col++) {
-      buffer[row][col] = vga_entry('\0', vga_color);
+      buffer[row][col] = vga_entry('\0', term_color);
     }
   }
 
@@ -381,3 +287,16 @@ void term_update() {
   term_draw_statusline();
   term_flush();
 }
+
+TermMode term_get_mode() {
+  return mode;
+}
+
+void term_set_mode(TermMode m) {
+  if (m < NORMAL || m > INSERT) {
+    return;
+  }
+  mode = m;
+}
+
+// vim: foldmethod=marker
