@@ -1,0 +1,30 @@
+#!/bin/sh
+
+if [[ $# -ne 1 ]]; then
+  echo "Expected only 1 arg"
+  exit 1
+fi
+
+PROG=$1
+BISON_FILE=$(find -name $PROG.y)
+FLEX_FILE=$(find -name $PROG.l)
+GCC_LINK=""
+
+if [[ $PROG == "clean" ]]; then
+  rm -rf *.out
+  rm -fr *.tab.h
+  rm -fr *.tab.c
+  rm -rf lex.yy.c
+  exit 0
+fi
+
+if [[ $BISON_FILE != "" ]]; then
+  bison -d $BISON_FILE
+  GCC_LINK=$PROG.tab.c
+fi
+
+if [[ $FLEX_FILE != "" ]]; then
+  flex $FLEX_FILE
+fi
+
+gcc $GCC_LINK lex.yy.c -o $PROG.out
