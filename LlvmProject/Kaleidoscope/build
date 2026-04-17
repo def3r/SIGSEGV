@@ -1,0 +1,7 @@
+#!/bin/bash
+
+clang++ -g -O3 lang.cpp $(llvm-config --cxxflags --ldflags --system-libs --libs core) -o kcomp
+clang++ -c stdlib.cpp -o stdlib.o
+./kcomp input.k
+llc -filetype=obj input.ll -o input.o
+clang++ input.o stdlib.o -o output

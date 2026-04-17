@@ -18,6 +18,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -183,7 +184,8 @@ static int GetTokPrecedence() {
 }
 
 std::unique_ptr<ExprAST> LogError(const char* Str) {
-  fprintf(stderr, "Error: %s\n", Str);
+  fprintf(stderr, "; Error: %s\n", Str);
+  fprintf(stdout, "; Error: %s\n", Str);
   return nullptr;
 }
 std::unique_ptr<PrototypeAST> LogErrorP(const char* Str) {
@@ -363,7 +365,7 @@ static std::unique_ptr<PrototypeAST> ParseExtern() {
 static void HandleDefinition() {
   if (auto FnAST = ParseDefinition()) {
     if (auto* FnIR = FnAST->codegen()) {
-      fprintf(stderr, "Parsed a function definition.\n");
+      fprintf(stderr, "; Parsed a function definition.\n");
       FnIR->print(errs());
       fprintf(stderr, "\n");
     }
@@ -376,7 +378,7 @@ static void HandleDefinition() {
 static void HandleExtern() {
   if (auto ProtoAST = ParseExtern()) {
     if (auto* FnIR = ProtoAST->codegen()) {
-      fprintf(stderr, "Parsed an extern\n");
+      fprintf(stderr, "; Parsed an extern\n");
       FnIR->print(errs());
       fprintf(stderr, "\n");
     }
@@ -389,7 +391,7 @@ static void HandleTopLevelExpression() {
   // Evaluate a top-level expression into an anonymous function.
   if (auto FnAST = ParseTopLevelExpr()) {
     if (auto* FnIR = FnAST->codegen()) {
-      fprintf(stderr, "Parsed a top-level expr\n");
+      fprintf(stderr, "; Parsed a top-level expr\n");
       FnIR->print(errs());
       fprintf(stderr, "\n");
 
@@ -404,7 +406,6 @@ static void HandleTopLevelExpression() {
 /// top ::= definition | external | expression | ';'
 static void MainLoop() {
   while (true) {
-    fprintf(stderr, "ready> ");
     switch (CurTok) {
       case tok_eof:
         return;
@@ -427,7 +428,7 @@ static void MainLoop() {
 // }}}
 
 // Chapter 3 {{{
-// https://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl03.html
+// https://llvm.org/docs/tutorial/MyFirstLanguageFrontendLangImpl03.html
 static std::unique_ptr<LLVMContext> TheContext;
 static std::unique_ptr<IRBuilder<>> Builder;
 static std::unique_ptr<Module> TheModule;
@@ -524,7 +525,7 @@ Function* FunctionAST::codegen() {
   }
 
   if (Value* RetVal = Body->codegen()) {
-    Builder->CreateResume(RetVal);
+    Builder->CreateRet(RetVal);
     verifyFunction(*TheFunction);
     return TheFunction;
   }
@@ -536,27 +537,44 @@ Function* FunctionAST::codegen() {
 static void InitializeModule() {
   // Open a new context and module.
   TheContext = std::make_unique<LLVMContext>();
-  TheModule = std::make_unique<Module>("jit jit ding", *TheContext);
+  TheModule = std::make_unique<Module>("llvm jit module", *TheContext);
 
   // Create a new builder for the module.
   Builder = std::make_unique<IRBuilder<>>(*TheContext);
 }
 // }}}
 
-int main() {
+int main(int argc, char* argv[]) {
+  if (argc == 1) {
+    fprintf(stderr, "ARGC == 1\n");
+    exit(EXIT_FAILURE);
+  } else if (argc > 2) {
+    fprintf(stderr, "ARGC > 2, args > 2 are ignored\n");
+  }
+
+  // laziest parsing known to human
+  std::string arg1(argv[1]);
+  std::string_view fname(arg1);
+  if (fname.find_last_of('.') != std::string_view::npos) {
+    fname.remove_suffix(fname.size() - fname.find_last_of('.'));
+  }
+  std::string outfile = std::string(fname) + ".ll";
+
+  std::freopen(arg1.c_str(), "r", stdin);
+  std::freopen(outfile.c_str(), "w", stderr);
+
   BinopPrecedence['<'] = 10;
   BinopPrecedence['+'] = 20;
   BinopPrecedence['-'] = 20;
   BinopPrecedence['*'] = 40;
 
-  fprintf(stderr, "ready$ ");
   getNextToken();
 
   InitializeModule();
 
-  MainLoop();
-
   TheModule->print(errs(), nullptr);
+
+  MainLoop();
 }
 
 // vim: foldmethod=marker
