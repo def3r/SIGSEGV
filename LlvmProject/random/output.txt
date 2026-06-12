@@ -1,0 +1,12 @@
+$ python submit_ibm.py add_7_11_circuit.qasm                                              31.2s
+qiskit_runtime_service.__init__:WARNING:2026-06-12 12:14:22,345: Instance was not set at service instantiation. Free and trial plan instances will be prioritized. Based on the following filters: (tags: None, region: us-east, eu-de), and available plans: (open), the available account instances are: open-instance. If you need a specific instance set it explicitly either by using a saved account with a saved default instance or passing it in directly to QiskitRuntimeService().
+qiskit_runtime_service.backends:WARNING:2026-06-12 12:14:22,966: Loading instance: open-instance, plan: open
+qiskit_runtime_service.backends:WARNING:2026-06-12 12:14:28,182: Using instance: open-instance, plan: open
+PrimitiveResult([SamplerPubResult(data=DataBin(c=BitArray(<shape=(), num_shots=1024, num_bits=6>)), metadata={'circuit_metadata': {}})], metadata={'execution': {'execution_spans': ExecutionSpans([DoubleSliceSpan(<start='2026-06-12 06:44:36', stop='2026-06-12 06:44:37', size=1024>)])}, 'version': 2})
+SKIBIDI
+dict_keys(['c'])
+SKIBIDI
+DataBin(c=BitArray(<shape=(), num_shots=1024, num_bits=6>))
+18
+
+time to complete the command: 25.7s

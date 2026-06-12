@@ -1,0 +1,10 @@
+{
+    "family": "ADD",
+    "instance": {
+        "bits": 32,
+        "operands": [
+            7,
+            11
+        ]
+    }
+}
