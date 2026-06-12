@@ -10,3 +10,14 @@ DataBin(c=BitArray(<shape=(), num_shots=1024, num_bits=6>))
 18
 
 time to complete the command: 25.7s
+
+-- from qcc
+
+./qprog                                                                                   1595ms
+qiskit_runtime_service.__init__:WARNING:2026-06-12 23:09:52,804: Instance was not set at service instantiation. Free and trial plan instances will be prioritized. Based on the following filters: (tags: None, region: us-east, eu-de), and available plans: (open), the available account instances are: open-instance. If you need a specific instance set it explicitly either by using a saved account with a saved default instance or passing it in directly to QiskitRuntimeService().
+qiskit_runtime_service.backends:WARNING:2026-06-12 23:09:53,338: Loading instance: open-instance, plan: open
+qiskit_runtime_service.backends:WARNING:2026-06-12 23:09:56,854: Using instance: open-instance, plan: open
+quantum_runtime: worker ready
+71 + 11 = 82; 10 + 20 = 30; ⏎
+
+time to complete the command: 15.8m -- 15 MINUTES >=(

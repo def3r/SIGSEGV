@@ -1,0 +1,20 @@
+#!/bin/sh
+
+if [[ "$1" == "" ]]; then
+  echo "Expected c file"
+  exit 1
+fi
+
+filename=$(basename $1 .c)
+
+clang -emit-llvm -S -Xclang -disable-O0-optnone "$1" -o "$filename.ll"
+opt -passes="mem2reg" -S "$filename.ll" -o after_mem2reg.ll
+
+julia pass.jl
+
+xxd -i qworker.py > qworkerpy.h
+
+llc -filetype=obj --relocation-model=pic after_quantum_pass.ll -o program.o
+clang -fPIE -c libqrun.c -o libqrun.o
+clang -fPIE -c qtable.c -o qtable.o
+clang -fPIE program.o libqrun.o qtable.o -o qprog

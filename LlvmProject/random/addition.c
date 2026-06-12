@@ -5,7 +5,7 @@
 //
 // Perform the mem2reg pass:
 // $ clang -emit-llvm -S -Xclang -disable-O0-optnone addition.c -o addition.ll
-// $ opt -passes="mem2reg,inline" -S addition.ll -o after_mem2reg.ll
+// $ opt -passes="mem2reg" -S addition.ll -o after_mem2reg.ll
 //
 // -disable-O0-optnone :: by default clang -O0 adds a `optnone` attr to every
 // function, using this flag the attr is not added.
@@ -15,16 +15,25 @@
 // 2. Want to avoid recursive funcs
 // 3. How much to produce, every single new addn instruction needs its own
 // quantum circuit
-// 4. 
+//
+// - Parallely run python script, or new thread: `quantum_worker`, and then IPC
+
+#include <stdio.h>
 
 int sum(int a, int b) {
   return a + b;
 }
 
 int main() {
-  int a = 7;
+  int a = 71;
   int b = 11;
   int c = sum(a, b);  // structure 1
   int d = a + b;      // structure 2
-  return c;
+  printf("%d + %d = %d; ", a, b, d);
+  fflush(stdout);
+
+  a = 10, b = 20;
+  d = a + b;
+  printf("%d + %d = %d; ", a, b, d);
+  return 0;
 }
