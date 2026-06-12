@@ -12,9 +12,11 @@ opt -passes="mem2reg" -S "$filename.ll" -o after_mem2reg.ll
 
 julia pass.jl
 
-xxd -i qworker.py > qworkerpy.h
+# xxd -i qworker.py > qworkerpy.h
+# llc -filetype=obj --relocation-model=pic after_quantum_pass.ll -o program.o
+# clang -fPIE -c libqrun.c -o libqrun.o
+# clang -fPIE -c qtable.c -o qtable.o
+# clang -fPIE program.o libqrun.o qtable.o -o qprog
 
-llc -filetype=obj --relocation-model=pic after_quantum_pass.ll -o program.o
-clang -fPIE -c libqrun.c -o libqrun.o
-clang -fPIE -c qtable.c -o qtable.o
-clang -fPIE program.o libqrun.o qtable.o -o qprog
+ld -r -b binary qworker.py -o qworker.o
+./link.sh # pass.jl generates this script
