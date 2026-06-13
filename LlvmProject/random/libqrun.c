@@ -6,18 +6,18 @@
 #include <string.h>
 #include <unistd.h>
 
-// ── embedded worker via linker trick ─────────────────────────────────────────
+// embedded worker via linker trick
 // ld -r -b binary qworker.py -o qworker.o
 extern char _binary_qworker_py_start[];
-extern char _binary_qworker_py_end[];
+extern char _binary_qworker_py_size[];
 
-// ── worker state ─────────────────────────────────────────────────────────────
-static FILE* worker_in  = NULL;
+// worker state
+static FILE* worker_in = NULL;
 static FILE* worker_out = NULL;
 static pid_t worker_pid = -1;
-static char  worker_tmp[64] = "/tmp/qworker_XXXXXX.py";
+static char worker_tmp[64] = "/tmp/qworker_XXXXXX.py";
 
-// ── protocol helpers ─────────────────────────────────────────────────────────
+// IPC helpers
 
 static void send_null_terminated(const char* s, size_t len) {
   fwrite(s, 1, len, worker_in);
@@ -28,7 +28,7 @@ static void send_null_terminated(const char* s, size_t len) {
 static char* read_until_null() {
   size_t cap = 256;
   size_t len = 0;
-  char*  buf = malloc(cap);
+  char* buf = malloc(cap);
 
   if (!buf) {
     fprintf(stderr, "quantum_runtime: malloc failed\n");
@@ -44,7 +44,7 @@ static char* read_until_null() {
     }
     if (len + 1 >= cap) {
       cap *= 2;
-      buf  = realloc(buf, cap);
+      buf = realloc(buf, cap);
       if (!buf) {
         fprintf(stderr, "quantum_runtime: realloc failed\n");
         abort();
@@ -56,7 +56,7 @@ static char* read_until_null() {
   return buf;
 }
 
-// ── table lookup ─────────────────────────────────────────────────────────────
+// table lookup :: O(n) linear search
 
 static quantum_entry_t* quantum_lookup(const char* key) {
   for (int i = 0; i < quantum_table_size; i++) {
@@ -67,7 +67,7 @@ static quantum_entry_t* quantum_lookup(const char* key) {
   return NULL;
 }
 
-// ── constructor: init worker before main ─────────────────────────────────────
+// constructor: init worker before main
 
 __attribute__((constructor)) static void quantum_runtime_init() {
   int fd = mkstemps(worker_tmp, 3);
@@ -77,7 +77,7 @@ __attribute__((constructor)) static void quantum_runtime_init() {
   }
 
   // use linker symbols instead of xxd array
-  size_t worker_len = _binary_qworker_py_end - _binary_qworker_py_start;
+  size_t worker_len = (size_t)_binary_qworker_py_size;
   write(fd, _binary_qworker_py_start, worker_len);
   close(fd);
 
@@ -94,7 +94,7 @@ __attribute__((constructor)) static void quantum_runtime_init() {
   }
 
   if (worker_pid == 0) {
-    dup2(stdin_pipe[0],  STDIN_FILENO);
+    dup2(stdin_pipe[0], STDIN_FILENO);
     dup2(stdout_pipe[1], STDOUT_FILENO);
     close(stdin_pipe[1]);
     close(stdout_pipe[0]);
@@ -105,7 +105,7 @@ __attribute__((constructor)) static void quantum_runtime_init() {
 
   close(stdin_pipe[0]);
   close(stdout_pipe[1]);
-  worker_in  = fdopen(stdin_pipe[1], "w");
+  worker_in = fdopen(stdin_pipe[1], "w");
   worker_out = fdopen(stdout_pipe[0], "r");
 
   if (!worker_in || !worker_out) {
@@ -115,7 +115,8 @@ __attribute__((constructor)) static void quantum_runtime_init() {
 
   char* ready = read_until_null();
   if (strcmp(ready, "READY") != 0) {
-    fprintf(stderr, "quantum_runtime: worker did not send READY, got: %s\n", ready);
+    fprintf(stderr, "quantum_runtime: worker did not send READY, got: %s\n",
+            ready);
     free(ready);
     abort();
   }
@@ -124,16 +125,20 @@ __attribute__((constructor)) static void quantum_runtime_init() {
   fprintf(stderr, "quantum_runtime: worker ready\n");
 }
 
-// ── destructor ───────────────────────────────────────────────────────────────
+// destructor
 
 __attribute__((destructor)) static void quantum_runtime_destroy() {
-  if (worker_in)  fclose(worker_in);
-  if (worker_out) fclose(worker_out);
-  if (worker_pid > 0) kill(worker_pid, SIGTERM);
-  if (worker_tmp[0])  unlink(worker_tmp);
+  if (worker_in)
+    fclose(worker_in);
+  if (worker_out)
+    fclose(worker_out);
+  if (worker_pid > 0)
+    kill(worker_pid, SIGTERM);
+  if (worker_tmp[0])
+    unlink(worker_tmp);
 }
 
-// ── quantum_execute ───────────────────────────────────────────────────────────
+// execution
 
 int32_t quantum_execute(const char* key, const char* decoder) {
   quantum_entry_t* entry = quantum_lookup(key);
@@ -155,8 +160,8 @@ int32_t quantum_execute(const char* key, const char* decoder) {
   }
   free(status);
 
-  char*   result_str = read_until_null();
-  int32_t result     = (int32_t)atoi(result_str);
+  char* result_str = read_until_null();
+  int32_t result = (int32_t)atoi(result_str);
   free(result_str);
 
   return result;

@@ -1,16 +1,14 @@
 using LLVM
 using JSON
 
-# ── config ────────────────────────────────────────────────────────────────────
-
+# config
 const C2Q_BIN    = get(ENV, "C2Q_BIN", "/home/def3r/iitk/C2Q/.venv/bin/c2q-json")
-const INPUT_LL   = "after_mem2reg.ll"
+const INPUT_LL   = isempty(ARGS) ? error("usage: julia pass.jl <input.ll>") : ARGS[1]
 const OUTPUT_LL  = "after_quantum_pass.ll"
 const TABLE_C    = "qtable.c"
 const LINK_SH    = "link.sh"
 
-# ── c2q helpers ───────────────────────────────────────────────────────────────
-
+# c2q helpers
 function generate_qasm(val1::Int, val2::Int)::Tuple{String, String}
     key       = "add_$(val1)_$(val2)"
     json_path = "$(key).json"
@@ -43,10 +41,8 @@ function generate_qasm(val1::Int, val2::Int)::Tuple{String, String}
     return key, qasm_path
 end
 
-# ── emit qtable.c ────────────────────────────────────────────────────────────
+# emit qtable.c
 # uses linker symbols from: ld -r -b binary <key>_circuit.qasm -o <key>.o
-# no hex dump — raw bytes embedded by linker, zero size inflation
-
 function emit_table(entries::Vector{Tuple{String, String}})
     open(TABLE_C, "w") do f
         println(f, "#include \"libqrun.h\"")
@@ -79,8 +75,7 @@ function emit_table(entries::Vector{Tuple{String, String}})
     println("[pass] emitted $TABLE_C with $(length(entries)) entries (linker symbols)")
 end
 
-# ── embed qasm files via ld ───────────────────────────────────────────────────
-
+# embed qasm files via ld
 function embed_qasm(entries::Vector{Tuple{String, String}})
     for (key, qasm_path) in entries
         obj_path = "$(key).o"
@@ -92,30 +87,46 @@ function embed_qasm(entries::Vector{Tuple{String, String}})
     end
 end
 
-# ── emit link.sh ─────────────────────────────────────────────────────────────
-
+# emit link.sh
 function emit_link_script(entries::Vector{Tuple{String, String}})
+    objs = ["program.o", "libqrun.o", "qtable.o", "qworker.o"]
+    for (key, _) in entries
+        push!(objs, "$(key).o")
+    end
+
     open(LINK_SH, "w") do f
         println(f, "#!/bin/bash")
         println(f, "set -e")
+        println(f, "")
+        println(f, "KEEP=0")
+        println(f, "for arg in \"\$@\"; do")
+        println(f, "    case \"\$arg\" in")
+        println(f, "        --keep|-k) KEEP=1 ;;")
+        println(f, "    esac")
+        println(f, "done")
         println(f, "")
         println(f, "llc -filetype=obj --relocation-model=pic $OUTPUT_LL -o program.o")
         println(f, "clang -fPIE -c libqrun.c -o libqrun.o")
         println(f, "clang -fPIE -c $TABLE_C  -o qtable.o")
         println(f, "")
-        objs = ["program.o", "libqrun.o", "qtable.o", "qworker.o"]
-        for (key, _) in entries
-            push!(objs, "$(key).o")
-        end
         println(f, "clang -fPIE $(join(objs, " ")) -o qprog")
         println(f, "echo 'build complete → ./qprog'")
+        println(f, "")
+        jsons = join(["$(key).json" for (key, _) in entries], " ")
+        qasms = join([qasm_path for (_, qasm_path) in entries], " ")
+        println(f, "if [ \"\$KEEP\" -eq 0 ]; then")
+        println(f, "    rm -f $(join(objs, " "))")
+        println(f, "    rm -f $jsons")
+        println(f, "    rm -f $qasms")
+        println(f, "    rm -f $INPUT_LL $OUTPUT_LL")
+        println(f, "    echo 'artifacts cleaned up (use --keep to preserve)'")
+        println(f, "fi")
     end
     run(`chmod +x $LINK_SH`)
     println("[pass] emitted $LINK_SH")
 end
 
-# ── main pass ─────────────────────────────────────────────────────────────────
-
+# main pass
 context!(Context()) do
     mod = parse(LLVM.Module, String(read(INPUT_LL)))
 

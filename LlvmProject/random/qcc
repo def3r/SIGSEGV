@@ -1,17 +1,35 @@
 #!/bin/sh
 
-if [[ "$1" == "" ]]; then
+KEEP=0
+POSITIONAL=""
+for arg in "$@"; do
+  case "$arg" in
+    --keep|-k) KEEP=1 ;;
+    *) POSITIONAL="$arg" ;;
+  esac
+done
+
+if [[ "$POSITIONAL" == "" ]]; then
   echo "Expected c file"
   exit 1
+
+elif [[ "$POSITIONAL" == "clean" ]]; then
+  rm -rf *.json
+  rm -rf *.o *.qasm
+  rm -rf link.sh qtable.c
+  rm -rf after_mem2reg.ll after_quantum_pass.ll
+  rm -rf qprog
+  exit 0
 fi
 
-filename=$(basename $1 .c)
+filename=$(basename $POSITIONAL .c)
 
-clang -emit-llvm -S -Xclang -disable-O0-optnone "$1" -o "$filename.ll"
+clang -emit-llvm -S -Xclang -disable-O0-optnone "$POSITIONAL" -o "$filename.ll"
 opt -passes="mem2reg" -S "$filename.ll" -o after_mem2reg.ll
 
-julia pass.jl
+julia pass.jl after_mem2reg.ll
 
+# Ol way to embed hex dump
 # xxd -i qworker.py > qworkerpy.h
 # llc -filetype=obj --relocation-model=pic after_quantum_pass.ll -o program.o
 # clang -fPIE -c libqrun.c -o libqrun.o
@@ -19,4 +37,4 @@ julia pass.jl
 # clang -fPIE program.o libqrun.o qtable.o -o qprog
 
 ld -r -b binary qworker.py -o qworker.o
-./link.sh # pass.jl generates this script
+[ "$KEEP" -eq 1 ] && ./link.sh --keep || ./link.sh

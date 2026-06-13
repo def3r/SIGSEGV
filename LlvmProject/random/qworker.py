@@ -4,7 +4,7 @@ from qiskit.qasm3 import loads
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 from qiskit_ibm_runtime import QiskitRuntimeService, SamplerV2
 
-# ─── decoders ───────────────────────────────────────────────────────────────
+# decoders
 
 def add(data):
     register = list(data.__dict__.keys())[0]
@@ -12,7 +12,7 @@ def add(data):
     most_frequent = max(counts, key=counts.get)
     return str(int(most_frequent, 2))
 
-# ─── protocol ───────────────────────────────────────────────────────────────
+# IPC helpers
 
 def read_until_null():
     buf = b""
@@ -26,8 +26,7 @@ def send(msg):
     sys.stdout.buffer.write(msg.encode() + b'\x00')
     sys.stdout.buffer.flush()
 
-# ─── init ────────────────────────────────────────────────────────────────────
-
+# init
 def init():
     service = QiskitRuntimeService()
     backend = service.least_busy(operational=True, simulator=False)
@@ -35,8 +34,7 @@ def init():
     sampler = SamplerV2(backend)
     return pm, sampler
 
-# ─── main loop ───────────────────────────────────────────────────────────────
-
+# main loop
 def run(pm, sampler):
     while True:
         decoder_name = read_until_null()
