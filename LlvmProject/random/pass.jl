@@ -9,8 +9,8 @@ const TABLE_C    = "qtable.c"
 const LINK_SH    = "link.sh"
 
 # c2q helpers
-function generate_qasm(val1::Int, val2::Int)::Tuple{String, String}
-    key       = "add_$(val1)_$(val2)"
+function generate_qasm(op::String, family::String, bits::Int, val1::Int, val2::Int)::Tuple{String, String}
+    key       = "$(op)_$(val1)_$(val2)"
     json_path = "$(key).json"
     qasm_path = "$(key)_circuit.qasm"
 
@@ -21,10 +21,10 @@ function generate_qasm(val1::Int, val2::Int)::Tuple{String, String}
     end
 
     payload = Dict(
-        "family"   => "ADD",
+        "family"   => family,
         "instance" => Dict(
             "operands" => [val1, val2],
-            "bits"     => 32
+            "bits"     => bits
         )
     )
 
@@ -34,7 +34,7 @@ function generate_qasm(val1::Int, val2::Int)::Tuple{String, String}
 
     proc = run(`$C2Q_BIN --input $json_path --export`, wait=true)
     if !success(proc)
-        error("c2q-json failed for $val1 + $val2")
+        error("c2q-json failed for $val1 $op $val2")
     end
 
     println("[pass] generated QASM: $qasm_path")
@@ -136,8 +136,9 @@ context!(Context()) do
     qe_type  = LLVM.FunctionType(i32, [i8ptr, i8ptr])
     qe_fn    = LLVM.Function(mod, "quantum_execute", qe_type)
 
-    # collect constant add instructions
-    to_replace = Vector{Tuple{LLVM.Instruction, Int, Int}}()
+    # collect constant add and mul instructions
+    to_replace_add = Vector{Tuple{LLVM.Instruction, Int, Int}}()
+    to_replace_mul = Vector{Tuple{LLVM.Instruction, Int, Int}}()
 
     for func in functions(mod)
         for bb in blocks(func)
@@ -146,25 +147,35 @@ context!(Context()) do
                     op1 = operands(inst)[1]
                     op2 = operands(inst)[2]
                     if isa(op1, ConstantInt) && isa(op2, ConstantInt)
-                        val1 = convert(Int, op1)
-                        val2 = convert(Int, op2)
-                        push!(to_replace, (inst, val1, val2))
+                        push!(to_replace_add, (inst, convert(Int, op1), convert(Int, op2)))
+                    end
+                elseif opcode(inst) == LLVM.API.LLVMMul
+                    op1 = operands(inst)[1]
+                    op2 = operands(inst)[2]
+                    if isa(op1, ConstantInt) && isa(op2, ConstantInt)
+                        push!(to_replace_mul, (inst, convert(Int, op1), convert(Int, op2)))
                     end
                 end
             end
         end
     end
 
-    # deduplicate: track which (val1, val2) pairs we have already processed
-    seen    = Set{Tuple{Int,Int}}()
-    entries = Vector{Tuple{String, String}}()
+    # deduplicate and generate qasm for each unique (op, val1, val2)
+    seen_add = Set{Tuple{Int,Int}}()
+    seen_mul = Set{Tuple{Int,Int}}()
+    entries  = Vector{Tuple{String, String}}()
 
-    for (_, val1, val2) in to_replace
-        key = (val1, val2)
-        if key ∉ seen
-            push!(seen, key)
-            qasm_key, qasm_path = generate_qasm(val1, val2)
-            push!(entries, (qasm_key, qasm_path))
+    for (_, val1, val2) in to_replace_add
+        if (val1, val2) ∉ seen_add
+            push!(seen_add, (val1, val2))
+            push!(entries, generate_qasm("add", "ADD", 32, val1, val2))
+        end
+    end
+
+    for (_, val1, val2) in to_replace_mul
+        if (val1, val2) ∉ seen_mul
+            push!(seen_mul, (val1, val2))
+            push!(entries, generate_qasm("mul", "MUL", 8, val1, val2))
         end
     end
 
@@ -173,26 +184,29 @@ context!(Context()) do
     embed_qasm(entries)
     emit_link_script(entries)
 
-    # replace instructions
-    for (inst, val1, val2) in to_replace
+    # replace add instructions
+    for (inst, val1, val2) in to_replace_add
         println("[pass] replacing add $val1 + $val2 → call @quantum_execute")
-
-        key_str     = "add_$(val1)_$(val2)"
-        decoder_str = "add"
-
         LLVM.@dispose builder=IRBuilder() begin
             position!(builder, inst)
-
-            # create global string constants for key and decoder
-            key_gv     = globalstring_ptr!(builder, key_str,     "qkey")
-            decoder_gv = globalstring_ptr!(builder, decoder_str, "qdecoder")
-
-            call = call!(builder, qe_type, qe_fn,
-                        [key_gv, decoder_gv], "")
-
+            key_gv     = globalstring_ptr!(builder, "add_$(val1)_$(val2)", "qkey")
+            decoder_gv = globalstring_ptr!(builder, "add",                 "qdecoder")
+            call = call!(builder, qe_type, qe_fn, [key_gv, decoder_gv], "")
             replace_uses!(inst, call)
         end
+        unsafe_delete!(LLVM.parent(inst), inst)
+    end
 
+    # replace mul instructions
+    for (inst, val1, val2) in to_replace_mul
+        println("[pass] replacing mul $val1 × $val2 → call @quantum_execute")
+        LLVM.@dispose builder=IRBuilder() begin
+            position!(builder, inst)
+            key_gv     = globalstring_ptr!(builder, "mul_$(val1)_$(val2)", "qkey")
+            decoder_gv = globalstring_ptr!(builder, "mul",                 "qdecoder")
+            call = call!(builder, qe_type, qe_fn, [key_gv, decoder_gv], "")
+            replace_uses!(inst, call)
+        end
         unsafe_delete!(LLVM.parent(inst), inst)
     end
 
@@ -202,5 +216,5 @@ context!(Context()) do
     end
 
     println("[pass] wrote mutated IR → $OUTPUT_LL")
-    println("[pass] done. $(length(to_replace)) add(s) replaced.")
+    println("[pass] done. $(length(to_replace_add)) add(s) and $(length(to_replace_mul)) mul(s) replaced.")
 end

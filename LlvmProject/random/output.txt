@@ -1,3 +1,5 @@
+# ADDITION
+
 $ python submit_ibm.py add_7_11_circuit.qasm                                              31.2s
 qiskit_runtime_service.__init__:WARNING:2026-06-12 12:14:22,345: Instance was not set at service instantiation. Free and trial plan instances will be prioritized. Based on the following filters: (tags: None, region: us-east, eu-de), and available plans: (open), the available account instances are: open-instance. If you need a specific instance set it explicitly either by using a saved account with a saved default instance or passing it in directly to QiskitRuntimeService().
 qiskit_runtime_service.backends:WARNING:2026-06-12 12:14:22,966: Loading instance: open-instance, plan: open
@@ -21,3 +23,40 @@ quantum_runtime: worker ready
 71 + 11 = 82; 10 + 20 = 30; ⏎
 
 time to complete the command: 15.8m -- 15 MINUTES >=(
+
+
+
+# MULTIPLICATION
+
+$ ./qprog                                                                                    2380ms
+qiskit_runtime_service.__init__:WARNING:2026-06-13 12:35:03,020: Instance was not set at service instantiation. Free and trial plan instances will be prioritized. Based on the following filters: (tags: None, region: us-east, eu-de), and available plans: (open), the available account instances are: open-instance. If you need a specific instance set it explicitly either by using a saved account with a saved default instance or passing it in directly to QiskitRuntimeService().
+qiskit_runtime_service.backends:WARNING:2026-06-13 12:35:03,572: Loading instance: open-instance, plan: open
+qiskit_runtime_service.backends:WARNING:2026-06-13 12:35:07,801: Using instance: open-instance, plan: open
+quantum_runtime: worker ready
+2 x 3 = 6; 7 x 11 = 192; 13 x 11 = 68; 113 x 11 = 7464; ⏎
+
+time to complete the command: 1.1m -- 1 MINUTES >=(
+
+$ python -c "                                                                                  1.1m
+                                                from qiskit_ibm_runtime import QiskitRuntimeService
+                                                from qiskit.qasm3 import loads
+                                                from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
+                                                service = QiskitRuntimeService()
+                                                backend = service.least_busy(operational=True, simulator=False)
+                                                import sys
+
+                                                circuits = ['mul_2_3_circuit.qasm', 'mul_7_11_circuit.qasm', 'mul_13_11_circuit.qasm', 'mul_113_11_circuit.qasm']
+                                                for f in circuits:
+                                                    circuit = loads(open(f).read())
+                                                    pm = generate_preset_pass_manager(backend=backend, optimization_level=3)
+                                                    isa = pm.run(circuit)
+                                                    cz = isa.count_ops().get('cz', 0)
+                                                    print(f'{f}: depth={isa.depth()}, cz={cz}, fidelity≈{(1-0.0015)**cz:.3f}')
+                                                "
+qiskit_runtime_service.__init__:WARNING:2026-06-13 12:36:37,324: Instance was not set at service instantiation. Free and trial plan instances will be prioritized. Based on the following filters: (tags: None, region: us-east, eu-de), and available plans: (open), the available account instances are: open-instance. If you need a specific instance set it explicitly either by using a saved account with a saved default instance or passing it in directly to QiskitRuntimeService().
+qiskit_runtime_service.backends:WARNING:2026-06-13 12:36:37,639: Loading instance: open-instance, plan: open
+qiskit_runtime_service.backends:WARNING:2026-06-13 12:36:41,216: Using instance: open-instance, plan: open
+mul_2_3_circuit.qasm: depth=592, cz=235, fidelity≈0.703
+mul_7_11_circuit.qasm: depth=4613, cz=2104, fidelity≈0.042
+mul_13_11_circuit.qasm: depth=4608, cz=2155, fidelity≈0.039
+mul_113_11_circuit.qasm: depth=26057, cz=13018, fidelity≈0.000

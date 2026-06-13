@@ -12,6 +12,12 @@ def add(data):
     most_frequent = max(counts, key=counts.get)
     return str(int(most_frequent, 2))
 
+def mul(data):
+    register = list(data.__dict__.keys())[0]
+    counts = getattr(data, register).get_counts()
+    most_frequent = max(counts, key=counts.get)
+    return str(int(most_frequent, 2))
+
 # IPC helpers
 
 def read_until_null():
@@ -30,7 +36,7 @@ def send(msg):
 def init():
     service = QiskitRuntimeService()
     backend = service.least_busy(operational=True, simulator=False)
-    pm = generate_preset_pass_manager(backend=backend, optimization_level=1)
+    pm = generate_preset_pass_manager(backend=backend, optimization_level=3)
     sampler = SamplerV2(backend)
     return pm, sampler
 
