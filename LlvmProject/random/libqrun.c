@@ -60,9 +60,16 @@ static char* read_until_null() {
 
 static quantum_entry_t* quantum_lookup(const char* key) {
   for (int i = 0; i < quantum_table_size; i++) {
-    if (strcmp(quantum_table[i].key, key) == 0) {
+    if (strcmp(quantum_table[i].key, key) == 0)
       return &quantum_table[i];
-    }
+  }
+  return NULL;
+}
+
+static quantum_edge_entry_t* edge_lookup(const char* key) {
+  for (int i = 0; i < quantum_edge_table_size; i++) {
+    if (strcmp(quantum_edge_table[i].key, key) == 0)
+      return &quantum_edge_table[i];
   }
   return NULL;
 }
@@ -149,6 +156,23 @@ int32_t quantum_execute(const char* key, const char* decoder) {
 
   send_null_terminated(decoder, strlen(decoder));
   send_null_terminated(entry->qasm, entry->qasm_len);
+
+  // send edges as JSON for maxcut; empty string for arithmetic ops
+  quantum_edge_entry_t* ee = edge_lookup(key);
+  if (ee && ee->num_edges > 0) {
+    char buf[4096];
+    int pos = 0;
+    pos += snprintf(buf + pos, sizeof(buf) - pos, "[");
+    for (int i = 0; i < ee->num_edges; i++) {
+      if (i > 0) pos += snprintf(buf + pos, sizeof(buf) - pos, ",");
+      pos += snprintf(buf + pos, sizeof(buf) - pos, "[%d,%d]",
+                     ee->edges[i][0], ee->edges[i][1]);
+    }
+    pos += snprintf(buf + pos, sizeof(buf) - pos, "]");
+    send_null_terminated(buf, pos);
+  } else {
+    send_null_terminated("", 0);
+  }
 
   char* status = read_until_null();
   if (strcmp(status, "ERR") == 0) {

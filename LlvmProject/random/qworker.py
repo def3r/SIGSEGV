@@ -1,22 +1,41 @@
 import sys
 import time
+import math
+import json
+from collections import Counter
 from qiskit.qasm3 import loads
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 from qiskit_ibm_runtime import QiskitRuntimeService, SamplerV2
 
 # decoders
 
-def add(data):
+def add(data, edges):
     register = list(data.__dict__.keys())[0]
     counts = getattr(data, register).get_counts()
     most_frequent = max(counts, key=counts.get)
     return str(int(most_frequent, 2))
 
-def mul(data):
+def mul(data, edges):
     register = list(data.__dict__.keys())[0]
     counts = getattr(data, register).get_counts()
     most_frequent = max(counts, key=counts.get)
     return str(int(most_frequent, 2))
+
+def maxcut(data, edges):
+    register = list(data.__dict__.keys())[0]
+    counts = getattr(data, register).get_counts()
+    top = Counter(counts).most_common(4)
+    print("\nTop measurement outcomes (bitstring → count):", file=sys.stderr)
+    best_cut = -1
+    for bitstr, count in top:
+        bits = bitstr.replace(" ", "")
+        cut = sum(1 for u, v in edges if bits[-(u+1)] != bits[-(v+1)])
+        partition_0 = [i for i, b in enumerate(reversed(bits)) if b == "0"]
+        partition_1 = [i for i, b in enumerate(reversed(bits)) if b == "1"]
+        print(f"  |{bits}> : {count:4d}   S0={partition_0}  S1={partition_1}  cut={cut}", file=sys.stderr)
+        if cut > best_cut:
+            best_cut = cut
+    return str(best_cut)
 
 # IPC helpers
 
@@ -50,7 +69,15 @@ def run(pm, sampler):
             break
 
         try:
-            circuit     = loads(qasm_str)
+            circuit = loads(qasm_str)
+            if circuit.parameters:
+                param_map = {}
+                for p in circuit.parameters:
+                    if "_theta_0_" in p.name:
+                        param_map[p] = math.pi / 4
+                    elif "_theta_1_" in p.name:
+                        param_map[p] = math.pi / 4
+                circuit = circuit.assign_parameters(param_map)
             isa_circuit = pm.run(circuit)
             job         = sampler.run([isa_circuit], shots=1024)
 
@@ -63,8 +90,11 @@ def run(pm, sampler):
             result = job.result()
             data   = result[0].data
 
+            edges_json = read_until_null()
+            edges = json.loads(edges_json) if edges_json else []
+
             decoder = globals()[decoder_name]
-            answer  = decoder(data)
+            answer  = decoder(data, edges)
 
             send("OK")
             send(answer)

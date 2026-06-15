@@ -13,8 +13,16 @@ typedef struct {
   size_t qasm_len;   // length of qasm bytes
 } quantum_entry_t;
 
-extern quantum_entry_t quantum_table[];
-extern int quantum_table_size;
+typedef struct {
+  const char*      key;
+  const int      (*edges)[2];
+  int              num_edges;
+} quantum_edge_entry_t;
+
+extern quantum_entry_t      quantum_table[];
+extern int                  quantum_table_size;
+extern quantum_edge_entry_t quantum_edge_table[];
+extern int                  quantum_edge_table_size;
 
 // runtime api
 // called from mutated IR:
