@@ -27,6 +27,12 @@ filename=$(basename $POSITIONAL .c)
 clang -emit-llvm -S -Xclang -disable-O0-optnone "$POSITIONAL" -o "$filename.ll"
 opt -passes="mem2reg" -S "$filename.ll" -o after_mem2reg.ll
 
+# Made a precompiled sys img to improve julia init time
+# julia> using PackageCompiler
+#        create_sysimage(["Clang", "JSON"],
+#            sysimage_path="quantum_sysimage.so",
+#            precompile_execution_file="clang.jl")
+julia --sysimage quantum_sysimage.so clang.jl "$POSITIONAL"
 julia pass.jl after_mem2reg.ll
 
 # Ol way to embed hex dump
