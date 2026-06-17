@@ -21,6 +21,9 @@ export CPPFLAGS=''
 export SYSROOT="$(pwd)/sysroot"
 export CC="$CC --sysroot=$SYSROOT"
 
+mkdir -p bin/ bin/arch bin/arch/${HOST} bin/kernel
+export BINDIR="$(pwd)/bin"
+
 # Work around that the -elf gcc targets doesn't have a system include directory
 # because it was configured with --without-headers rather than --with-sysroot.
 if echo "$HOST" | grep -Eq -- '-elf($|-)'; then
