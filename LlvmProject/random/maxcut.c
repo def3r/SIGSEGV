@@ -19,5 +19,12 @@ int maxcut(int edges[][2], int num_edges, int* partition) {
 int main() {
   int edges[][2] = {{0, 1}, {1, 2}, {2, 3}, {3, 0}};
   int partition[] = {0, 1, 0, 1};
-  printf("cut = %d\n", maxcut(edges, 4, partition));
+  int cut = 0;
+  for (int i = 0; i < 4; i++) {
+    int u = edges[i][0];
+    int v = edges[i][1];
+    if (partition[u] != partition[v])
+      cut++;
+  }
+  printf("cut = %d\n", cut);
 }

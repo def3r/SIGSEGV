@@ -179,6 +179,156 @@ function emit_link_script(entries::Vector{Tuple{String,String}})
     println("[pass] emitted $LINK_SH")
 end
 
+# CFG helpers for loop detection
+
+# Successor basic blocks of bb (via its terminator).
+function bb_successors(bb::LLVM.BasicBlock)
+    term = last(collect(instructions(bb)))
+    n    = Int(LLVM.API.LLVMGetNumSuccessors(term.ref))
+    [LLVM.BasicBlock(LLVM.API.LLVMGetSuccessor(term.ref, Cuint(i))) for i in 0:n-1]
+end
+
+# BFS: can we reach 'target' starting from 'start'?
+function bb_can_reach(start::LLVM.BasicBlock, target::LLVM.BasicBlock)
+    visited = Set{LLVM.BasicBlock}()
+    queue   = [start]
+    while !isempty(queue)
+        bb = popfirst!(queue)
+        bb in visited && continue
+        push!(visited, bb)
+        for s in bb_successors(bb)
+            s == target && return true
+            push!(queue, s)
+        end
+    end
+    false
+end
+
+# Among the phi nodes at the top of hdr, find the cut accumulator:
+#   - i32 result type
+#   - one incoming value is constant 0 from preheader
+#   - at least one use lands in exit_bb
+function find_cut_phi(hdr      ::LLVM.BasicBlock,
+                      preheader::LLVM.BasicBlock,
+                      exit_bb  ::LLVM.BasicBlock,
+                      i32      ::LLVM.LLVMType)
+    for inst in instructions(hdr)
+        isa(inst, LLVM.PHIInst) || break
+        let tr = LLVM.API.LLVMTypeOf(inst.ref)
+            LLVM.API.LLVMGetTypeKind(tr) == LLVM.API.LLVMIntegerTypeKind &&
+            LLVM.API.LLVMGetIntTypeWidth(tr) == Cuint(32)
+        end || continue
+
+        n = Int(LLVM.API.LLVMCountIncoming(inst.ref))
+        zero_from_pre = false
+        for i in 0:n-1
+            LLVM.BasicBlock(LLVM.API.LLVMGetIncomingBlock(inst.ref, Cuint(i))) == preheader || continue
+            vr = LLVM.API.LLVMGetIncomingValue(inst.ref, Cuint(i))
+            LLVM.API.LLVMIsAConstantInt(vr) == C_NULL && continue
+            LLVM.API.LLVMConstIntGetSExtValue(vr) == 0 && (zero_from_pre = true; break)
+        end
+        zero_from_pre || continue
+
+        used_in_exit = any(collect(uses(inst))) do u
+            uv = LLVM.user(u)
+            isa(uv, LLVM.Instruction) && LLVM.parent(uv) == exit_bb
+        end
+        used_in_exit || continue
+
+        return inst
+    end
+    nothing
+end
+
+# Scan func for a natural loop whose header has a cut-accumulator phi.
+# Returns (preheader, loop_header, exit_block, cut_phi) or nothing.
+function find_maxcut_loop(func::LLVM.Function, i32::LLVM.LLVMType)
+    bbs = collect(blocks(func))
+    for hdr in bbs
+        preds = filter(b -> any(==(hdr), bb_successors(b)), bbs)
+        length(preds) < 2 && continue
+
+        pre_idx = findfirst(p -> !bb_can_reach(hdr, p), preds)
+        pre_idx === nothing && continue
+        pre = preds[pre_idx]
+
+        exit_bb = nothing
+        for s in bb_successors(hdr)
+            !bb_can_reach(s, hdr) && (exit_bb = s; break)
+        end
+        exit_bb === nothing && continue
+
+        cp = find_cut_phi(hdr, pre, exit_bb, i32)
+        cp !== nothing && return (pre, hdr, exit_bb, cp)
+    end
+    nothing
+end
+
+# Replace the inline MaxCut loop in func with a quantum_execute call:
+#   1. Insert quantum_execute in the preheader before its branch.
+#   2. Add a direct branch from preheader to exit (bypassing the loop).
+#   3. Delete the old preheader→loop branch.
+#   4. Replace all uses of the cut phi with the quantum_execute result.
+# The loop blocks become unreachable dead code.
+function replace_inline_loop!(func   ::LLVM.Function,
+                               key    ::String,
+                               qe_type::LLVM.FunctionType,
+                               qe_fn  ::LLVM.Function,
+                               i32    ::LLVM.LLVMType)
+    r = find_maxcut_loop(func, i32)
+    r === nothing && return false
+    preheader, _, exit_bb, cut_phi = r
+
+    old_term = last(collect(instructions(preheader)))
+    qe_call  = nothing
+    LLVM.@dispose builder=IRBuilder() begin
+        position!(builder, old_term)
+        key_gv     = globalstring_ptr!(builder, key,      "qkey")
+        decoder_gv = globalstring_ptr!(builder, "maxcut", "qdecoder")
+        qe_call    = call!(builder, qe_type, qe_fn, [key_gv, decoder_gv], "qe_cut")
+        br!(builder, exit_bb)
+    end
+    unsafe_delete!(LLVM.parent(old_term), old_term)   # remove old br →loop_header
+    replace_uses!(cut_phi, qe_call)                    # %.01 → %qe_cut everywhere
+
+    # Delete unreachable loop blocks so the verifier does not complain about
+    # phi nodes whose predecessor list no longer matches the CFG.
+    reachable = Set{LLVM.BasicBlock}()
+    bfs = [first(collect(blocks(func)))]
+    while !isempty(bfs)
+        bb = popfirst!(bfs)
+        bb in reachable && continue
+        push!(reachable, bb)
+        for s in bb_successors(bb); push!(bfs, s); end
+    end
+
+    dead = [bb for bb in collect(blocks(func)) if bb ∉ reachable]
+
+    # Phase 1 — replace every non-void instruction result with undef so that
+    # operand references between dead blocks can be safely dropped.
+    for bb in dead
+        for inst in collect(instructions(bb))
+            tr = LLVM.API.LLVMTypeOf(inst.ref)
+            LLVM.API.LLVMGetTypeKind(tr) == LLVM.API.LLVMVoidTypeKind && continue
+            LLVM.API.LLVMReplaceAllUsesWith(inst.ref, LLVM.API.LLVMGetUndef(tr))
+        end
+    end
+
+    # Phase 2 — erase instructions (reverse order avoids iterator invalidation).
+    for bb in dead
+        for inst in reverse(collect(instructions(bb)))
+            LLVM.API.LLVMInstructionEraseFromParent(inst.ref)
+        end
+    end
+
+    # Phase 3 — delete the now-empty blocks.
+    for bb in dead
+        LLVM.API.LLVMDeleteBasicBlock(bb.ref)
+    end
+
+    true
+end
+
 # replace instruction with quantum_execute call
 
 function replace_with_quantum_execute!(
@@ -247,9 +397,12 @@ context!(Context()) do
         (v1, v2) ∉ seen_mul && (push!(seen_mul, (v1,v2)); push!(entries, generate_qasm_arithmetic("mul","MUL",8,v1,v2)))
     end
 
-    # pass 2: maxcut - read AST analysis from quantum_manifest.json (written by clang.jl)
+    # pass 2: maxcut — read AST analysis from quantum_manifest.json (written by clang.jl)
 
-    maxcut_calls = Vector{Tuple{LLVM.Instruction,String}}()
+    # call-based: collect and replace after artifact emission (IR mutation deferred)
+    maxcut_calls  = Vector{Tuple{LLVM.Instruction,String}}()
+    # inline-based: the target function + key; replacement done after artifact emission
+    maxcut_inline = Vector{Tuple{LLVM.Function, String}}()
 
     manifest = isfile("quantum_manifest.json") ? JSON.parsefile("quantum_manifest.json") :
                Dict{String,Any}("maxcut" => [])
@@ -271,7 +424,8 @@ context!(Context()) do
             k
         end
 
-        # find every call instruction in the IR that calls func_name
+        # strategy 1: find call instructions that invoke func_name
+        call_found = false
         for func in functions(mod)
             for bb in blocks(func)
                 for inst in instructions(bb)
@@ -281,9 +435,20 @@ context!(Context()) do
                     callee = ops[end]
                     isa(callee, LLVM.Function) || continue
                     LLVM.name(callee) == func_name || continue
-                    println("[pass] replacing call to $func_name → @quantum_execute($key)")
+                    println("[pass] found call to $func_name → @quantum_execute($key)")
                     push!(maxcut_calls, (inst, key))
+                    call_found = true
                 end
+            end
+        end
+
+        # strategy 2: no call site — the loop is inline inside func_name itself
+        if !call_found
+            for func in functions(mod)
+                LLVM.name(func) == func_name || continue
+                push!(maxcut_inline, (func, key))
+                println("[pass] found inline loop in $func_name → @quantum_execute($key)")
+                break
             end
         end
     end
@@ -306,11 +471,19 @@ context!(Context()) do
         replace_with_quantum_execute!(inst, "mul_$(v1)_$(v2)", "mul", qe_type, qe_fn)
     end
 
-    # replace maxcut calls
+    # replace call-based maxcut
 
     for (call_inst, key) in maxcut_calls
         println("[pass] replacing maxcut call → @quantum_execute($key)")
         replace_with_quantum_execute!(call_inst, key, "maxcut", qe_type, qe_fn)
+    end
+
+    # replace inline-loop maxcut
+
+    for (func, key) in maxcut_inline
+        println("[pass] replacing inline maxcut loop in $(LLVM.name(func)) → @quantum_execute($key)")
+        replace_inline_loop!(func, key, qe_type, qe_fn, i32) ||
+            println("[pass] WARNING: could not find MaxCut loop pattern in $(LLVM.name(func))")
     end
 
     # write mutated IR
@@ -319,9 +492,10 @@ context!(Context()) do
         write(f, string(mod))
     end
 
+    n_maxcut = length(maxcut_calls) + length(maxcut_inline)
     println("[pass] wrote mutated IR → $OUTPUT_LL")
     println("[pass] done.")
     println("       $(length(to_replace_add)) add(s)")
     println("       $(length(to_replace_mul)) mul(s)")
-    println("       $(length(maxcut_calls)) maxcut(s)")
+    println("       $n_maxcut maxcut(s)  ($(length(maxcut_calls)) call, $(length(maxcut_inline)) inline)")
 end

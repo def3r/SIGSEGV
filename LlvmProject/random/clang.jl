@@ -28,7 +28,6 @@ cu_kind(c::CXCursor) = clang_getCursorKind(c)
 
 # cursor tree
 
-# Direct (non-recursive) children of a cursor.
 function cu_children(parent::CXCursor)::Vector{CXCursor}
     result = CXCursor[]
     fn = let r = result
@@ -42,7 +41,6 @@ function cu_children(parent::CXCursor)::Vector{CXCursor}
     result
 end
 
-# Depth-first walk of the subtree rooted at cursor (including cursor itself).
 function cu_walk(c::CXCursor, fn::Function)
     fn(c)
     for ch in cu_children(c)
@@ -50,8 +48,7 @@ function cu_walk(c::CXCursor, fn::Function)
     end
 end
 
-# First descendant (depth-first) that satisfies pred, or nothing.
-function cu_find(c::CXCursor, pred::Function)::Union{CXCursor, Nothing}
+function cu_find(c::CXCursor, pred::Function)::Union{CXCursor,Nothing}
     for ch in cu_children(c)
         pred(ch) && return ch
         found = cu_find(ch, pred)
@@ -60,27 +57,22 @@ function cu_find(c::CXCursor, pred::Function)::Union{CXCursor, Nothing}
     nothing
 end
 
-# First descendant of the given kind, or nothing.
 cu_find_kind(c, k) = cu_find(c, x -> cu_kind(x) == k)
-
-# Cursor itself if it matches, otherwise first descendant that does.
 cu_find_kind_self(c, k) = cu_kind(c) == k ? c : cu_find_kind(c, k)
 
 # tokenization
 
-# All token spellings covering the cursor's source extent.
-# Used to check operator tokens ('!=', '++') that libclang doesn't expose directly.
 function cu_tokens(tu, c::CXCursor)::Vector{String}
-    ext  = clang_getCursorExtent(c)
+    ext = clang_getCursorExtent(c)
     tptr = Ref{Ptr{CXToken}}(C_NULL)
     nref = Ref{Cuint}(0)
     clang_tokenize(tu, ext, tptr, nref)
-    n   = Int(nref[])
+    n = Int(nref[])
     ptr = tptr[]
     strs = String[]
     for i in 0:n-1
         tok = unsafe_load(ptr, i + 1)
-        s   = clang_getTokenSpelling(tu, tok)
+        s = clang_getTokenSpelling(tu, tok)
         push!(strs, unsafe_string(clang_getCString(s)))
         clang_disposeString(s)
     end
@@ -90,7 +82,6 @@ end
 
 # decl-reference check
 
-# True if any DeclRefExpr in the subtree rooted at cursor references decl.
 function refs_decl(c::CXCursor, decl::CXCursor)::Bool
     found = Ref(false)
     cu_walk(c, x -> begin
@@ -104,7 +95,7 @@ end
 
 # integer literal evaluation
 
-function eval_intlit(c::CXCursor)::Union{Int, Nothing}
+function eval_intlit(c::CXCursor)::Union{Int,Nothing}
     ev = clang_Cursor_Evaluate(c)
     ev == C_NULL && return nothing
     v = Int(clang_EvalResult_getAsInt(ev))
@@ -112,138 +103,170 @@ function eval_intlit(c::CXCursor)::Union{Int, Nothing}
     v
 end
 
-# structural pattern checks
+# ---- loop pattern helpers ----
 
-# 1. FunctionDecl with exactly 3 params: (int (*)[2], int, int *)
-function check_signature(func::CXCursor)::Union{Vector{CXCursor}, Nothing}
-    cu_kind(func) != CXCursor_FunctionDecl && return nothing
-    clang_isCursorDefinition(func) == 0    && return nothing
-
-    params = filter(cu_children(func)) do ch
-        cu_kind(ch) == CXCursor_ParmDecl
-    end
-    length(params) != 3 && return nothing
-
-    !occursin("[2]", cu_type_spelling(params[1])) && return nothing  # int (*)[2]
-    cu_type_spelling(params[2]) != "int"          && return nothing  # int num_edges
-    cu_type_spelling(params[3]) != "int *"        && return nothing  # int *partition
-
-    params
+# VarDecl for the index variable declared in a ForStmt's init clause (int i = 0).
+function find_loop_var(for_stmt::CXCursor)::Union{CXCursor,Nothing}
+    ch = cu_children(for_stmt)
+    isempty(ch) && return nothing
+    init = ch[1]
+    cu_kind(init) == CXCursor_DeclStmt || return nothing
+    vars = cu_children(init)
+    isempty(vars) && return nothing
+    first = vars[1]
+    cu_kind(first) == CXCursor_VarDecl ? first : nothing
 end
 
-# 2. ForStmt in the function body whose condition (a BinaryOperator child of the
-#    ForStmt) references num_edges_param.  Returns the ForStmt cursor, or nothing.
-function check_for_loop(func::CXCursor, num_edges_param::CXCursor)::Union{CXCursor, Nothing}
-    for_stmt = cu_find_kind(func, CXCursor_ForStmt)
-    for_stmt === nothing && return nothing
-
-    for ch in cu_children(for_stmt)
-        cu_kind(ch) == CXCursor_BinaryOperator || continue
-        refs_decl(ch, num_edges_param) && return for_stmt
+# Walk c's subtree for a DeclRefExpr, but stop (don't recurse) at ArraySubscriptExpr
+# boundaries so we don't accidentally find a sub-array's base.
+# Returns the referenced declaration cursor, or nothing.
+function shallow_declref_decl(c::CXCursor)::Union{CXCursor,Nothing}
+    cu_kind(c) == CXCursor_ArraySubscriptExpr && return nothing
+    cu_kind(c) == CXCursor_DeclRefExpr && return clang_getCursorReferenced(c)
+    for ch in cu_children(c)
+        r = shallow_declref_decl(ch)
+        r !== nothing && return r
     end
     nothing
 end
 
-# 3. Loop body contains VarDecls of the form:
-#       int u = edges[i][0];   (outer index == 0)
-#       int v = edges[i][1];   (outer index == 1)
-#    Verified by:  outer subscript → inner subscript referencing edges_param
-#                  outer index     → IntegerLiteral 0 or 1
-function check_edge_vardecls(body::CXCursor, edges_param::CXCursor)::Bool
-    has_u = Ref(false)
-    has_v = Ref(false)
-
-    cu_walk(body, (c) -> begin
-        cu_kind(c) != CXCursor_VarDecl && return
-
-        # Outermost ArraySubscriptExpr inside this VarDecl's initializer
-        outer = cu_find_kind(c, CXCursor_ArraySubscriptExpr)
-        outer === nothing && return
-
-        och = cu_children(outer)
-        length(och) < 2 && return
-
-        # Outer index: IntegerLiteral 0 or 1
-        idx = nothing
-        cu_walk(och[2], x -> begin
-            idx !== nothing && return
-            if cu_kind(x) == CXCursor_IntegerLiteral
-                v = eval_intlit(x)
-                (v == 0 || v == 1) && (idx = v)
-            end
-        end)
-        idx === nothing && return
-
-        # Base of outer subscript must be (or contain) an ArraySubscriptExpr
-        # that references edges_param - this is the inner edges[i] subscript
-        inner = cu_find_kind_self(och[1], CXCursor_ArraySubscriptExpr)
-        inner === nothing && return
-        refs_decl(inner, edges_param) || return
-
-        idx == 0 && (has_u[] = true)
-        idx == 1 && (has_v[] = true)
-    end)
-
-    has_u[] && has_v[]
+# Declaration of the outermost array in an ArraySubscriptExpr without descending
+# into nested subscripts on the base side.
+# e.g.  partition[u]          → ParmDecl(partition)
+#       partition[edges[i][0]] → ParmDecl(partition)
+function array_base_decl(sub::CXCursor)::Union{CXCursor,Nothing}
+    ch = cu_children(sub)
+    isempty(ch) && return nothing
+    shallow_declref_decl(ch[1])
 end
 
-# 4+5. Loop body contains an IfStmt whose:
-#   condition: BinaryOperator '!=' where both operands reference partition_param
-#   body:      UnaryOperator '++'  (the cut accumulator increment)
-function check_if_stmt(body::CXCursor, partition_param::CXCursor, tu)::Bool
-    if_stmt = cu_find_kind(body, CXCursor_IfStmt)
-    if_stmt === nothing && return false
+# Second child (index expression) of an ArraySubscriptExpr, or nothing.
+function array_index_expr(sub::CXCursor)::Union{CXCursor,Nothing}
+    ch = cu_children(sub)
+    length(ch) >= 2 ? ch[2] : nothing
+end
+
+# Check whether outer_sub has the shape  arr2d[loop_var][0_or_1].
+# Returns (arr2d_declaration_cursor, col) or nothing.
+function check_2d_array_access(outer_sub::CXCursor, loop_var::CXCursor)::Union{Tuple{CXCursor,Int},Nothing}
+    och = cu_children(outer_sub)
+    length(och) < 2 && return nothing
+
+    # Outer index: must be an integer literal 0 or 1.
+    col = Ref{Union{Int,Nothing}}(nothing)
+    cu_walk(och[2], c -> begin
+        col[] !== nothing && return
+        cu_kind(c) == CXCursor_IntegerLiteral || return
+        v = eval_intlit(c)
+        (v == 0 || v == 1) && (col[] = v)
+    end)
+    col[] === nothing && return nothing
+
+    # Base of outer: must be an inner ArraySubscriptExpr arr2d[loop_var].
+    inner = cu_find_kind_self(och[1], CXCursor_ArraySubscriptExpr)
+    inner === nothing && return nothing
+    ich = cu_children(inner)
+    length(ich) < 2 && return nothing
+
+    refs_decl(ich[2], loop_var) || return nothing   # inner index references the loop var
+
+    arr_decl = shallow_declref_decl(ich[1])         # inner base is the edges array
+    arr_decl === nothing && return nothing
+
+    (arr_decl, col[])
+end
+
+# Given the index expression idx of partition[idx], determine whether it resolves
+# to an edge-list access arr2d[loop_var][0_or_1], handling two surface forms:
+#
+#   Pattern A (explicit vars):   idx = DeclRefExpr(u)  where  int u = arr2d[i][0]
+#   Pattern B (inline):          idx = ArraySubscriptExpr(arr2d[i][0])
+#
+# Returns (edges_array_decl, col) or nothing.
+function resolve_to_edge_access(idx::CXCursor, loop_var::CXCursor)::Union{Tuple{CXCursor,Int},Nothing}
+    # Pattern B: idx is (or wraps) an ArraySubscriptExpr directly.
+    sub = cu_find_kind_self(idx, CXCursor_ArraySubscriptExpr)
+    if sub !== nothing
+        r = check_2d_array_access(sub, loop_var)
+        r !== nothing && return r
+    end
+
+    # Pattern A: idx is a reference to a local VarDecl whose initializer is arr2d[i][col].
+    ref_decl = shallow_declref_decl(idx)
+    ref_decl === nothing && return nothing
+    cu_kind(ref_decl) == CXCursor_VarDecl || return nothing
+    init_sub = cu_find_kind(ref_decl, CXCursor_ArraySubscriptExpr)
+    init_sub === nothing && return nothing
+    check_2d_array_access(init_sub, loop_var)
+end
+
+# Check whether for_stmt is a MaxCut cut-counting loop, matching:
+#
+#   Pattern A:  for(...) { int u=edges[i][0]; int v=edges[i][1];
+#                          if (partition[u]  != partition[v])  cut++; }
+#   Pattern B:  for(...) { if (partition[edges[i][0]] != partition[edges[i][1]]) cut++; }
+#
+# Returns the edges array declaration (VarDecl or ParmDecl) on success, nothing otherwise.
+function check_maxcut_loop(for_stmt::CXCursor, tu)::Union{CXCursor,Nothing}
+    loop_var = find_loop_var(for_stmt)
+    loop_var === nothing && return nothing
+
+    for_ch = cu_children(for_stmt)
+    length(for_ch) < 2 && return nothing
+    body = for_ch[end]      # body is always the last child of ForStmt
+
+    if_stmt = cu_find_kind_self(body, CXCursor_IfStmt)
+    if_stmt === nothing && return nothing
 
     if_ch = cu_children(if_stmt)
-    length(if_ch) < 2 && return false
-
-    cond      = if_ch[1]
+    length(if_ch) < 2 && return nothing
+    cond = if_ch[1]
     then_body = if_ch[2]
 
-    # Condition must be (or contain) a BinaryOperator '!='
+    # Condition: BinaryOperator '!='
     binop = cu_find_kind_self(cond, CXCursor_BinaryOperator)
-    binop === nothing && return false
-
-    "!=" ∉ cu_tokens(tu, binop) && return false
+    binop === nothing && return nothing
+    "!=" ∉ cu_tokens(tu, binop) && return nothing
 
     bch = cu_children(binop)
-    length(bch) < 2 && return false
+    length(bch) < 2 && return nothing
+    lhs_expr, rhs_expr = bch[1], bch[2]
 
-    # Both operands must reference partition_param (partition[u] and partition[v])
-    refs_decl(bch[1], partition_param) || return false
-    refs_decl(bch[2], partition_param) || return false
+    # Both operands must be subscripts of the SAME array (the partition array).
+    lhs_sub = cu_find_kind_self(lhs_expr, CXCursor_ArraySubscriptExpr)
+    rhs_sub = cu_find_kind_self(rhs_expr, CXCursor_ArraySubscriptExpr)
+    (lhs_sub === nothing || rhs_sub === nothing) && return nothing
 
-    # Then-body must contain a UnaryOperator '++'
+    lhs_base = array_base_decl(lhs_sub)
+    rhs_base = array_base_decl(rhs_sub)
+    (lhs_base === nothing || rhs_base === nothing) && return nothing
+    clang_equalCursors(lhs_base, rhs_base) == 0 && return nothing   # same partition array
+
+    # The subscript indices must resolve to edges[loop_var][0] and edges[loop_var][1].
+    lhs_idx = array_index_expr(lhs_sub)
+    rhs_idx = array_index_expr(rhs_sub)
+    (lhs_idx === nothing || rhs_idx === nothing) && return nothing
+
+    lhs_access = resolve_to_edge_access(lhs_idx, loop_var)
+    rhs_access = resolve_to_edge_access(rhs_idx, loop_var)
+    (lhs_access === nothing || rhs_access === nothing) && return nothing
+
+    lhs_arr, lhs_col = lhs_access
+    rhs_arr, rhs_col = rhs_access
+    clang_equalCursors(lhs_arr, rhs_arr) == 0 && return nothing     # same edges array
+    Set([lhs_col, rhs_col]) != Set([0, 1]) && return nothing    # one [0] and one [1]
+
+    # Then-body must contain a ++ (the cut accumulator).
     unary = cu_find_kind_self(then_body, CXCursor_UnaryOperator)
-    unary === nothing && return false
+    unary === nothing && return nothing
+    "++" ∉ cu_tokens(tu, unary) && return nothing
 
-    "++" ∉ cu_tokens(tu, unary) && return false
-
-    true
+    lhs_arr   # return the edges array declaration
 end
 
-# Full structural check combining all five criteria.
-function is_maxcut_pattern(func::CXCursor, tu)::Bool
-    params = check_signature(func)
-    params === nothing && return false
+# ---- edge list extraction from call site ----
 
-    edges_param, num_edges_param, partition_param = params
-
-    for_stmt = check_for_loop(func, num_edges_param)
-    for_stmt === nothing && return false
-
-    body = cu_children(for_stmt)[end]  # body is always the last child of ForStmt
-
-    check_edge_vardecls(body, edges_param) || return false
-    check_if_stmt(body, partition_param, tu) || return false
-
-    true
-end
-
-# edge list extraction from call site
-
-# Given a VarDecl of type int[N][2] with a constant initializer, extract edges.
-function extract_edges(var_decl::CXCursor)::Union{Vector{Tuple{Int,Int}}, Nothing}
+function extract_edges(var_decl::CXCursor)::Union{Vector{Tuple{Int,Int}},Nothing}
     outer = nothing
     for ch in cu_children(var_decl)
         cu_kind(ch) == CXCursor_InitListExpr && (outer = ch; break)
@@ -266,69 +289,98 @@ function extract_edges(var_decl::CXCursor)::Union{Vector{Tuple{Int,Int}}, Nothin
     isempty(edges) ? nothing : edges
 end
 
-# main detection
+# ---- main detection ----
 
 function detect_maxcut(root::CXCursor, tu)::Vector{Dict{String,Any}}
     results = Dict{String,Any}[]
 
-    # Pass 1: find all FunctionDecl definitions matching the structural pattern.
-    maxcut_funcs = CXCursor[]
-    cu_walk(root, c -> begin
-        is_maxcut_pattern(c, tu) || return
-        push!(maxcut_funcs, c)
-        params = filter(cu_children(c)) do ch; cu_kind(ch) == CXCursor_ParmDecl; end
-        println("[clang.jl] structural match: $(cu_spelling(c))",
-                "(", join(cu_type_spelling.(params), ", "), ")")
-    end)
+    # Functions where edges arrive as a parameter: (func_decl, func_name, param_idx_1based)
+    param_funcs = Vector{Tuple{CXCursor,String,Int}}()
 
-    isempty(maxcut_funcs) && return results
+    for func in cu_children(root)
+        cu_kind(func) != CXCursor_FunctionDecl && continue
+        clang_isCursorDefinition(func) == 0 && continue
 
-    # Pass 2: find CallExprs invoking those functions and extract edge data.
-    cu_walk(root, c -> begin
-        cu_kind(c) != CXCursor_CallExpr && return
+        func_name = cu_spelling(func)
+        params = filter(ch -> cu_kind(ch) == CXCursor_ParmDecl, cu_children(func))
 
-        # The first DeclRefExpr descendent is the callee reference.
-        callee_ref = cu_find(c, ch -> cu_kind(ch) == CXCursor_DeclRefExpr)
-        callee_ref === nothing && return
+        cu_walk(func, c -> begin
+            cu_kind(c) != CXCursor_ForStmt && return
 
-        referenced = clang_getCursorReferenced(callee_ref)
-        match_idx  = findfirst(f -> clang_equalCursors(f, referenced) != 0, maxcut_funcs)
-        match_idx === nothing && return
+            edges_decl = check_maxcut_loop(c, tu)
+            edges_decl === nothing && return
 
-        func_name = cu_spelling(maxcut_funcs[match_idx])
+            println("[clang.jl] structural match in: $func_name  (edges: $(cu_spelling(edges_decl)))")
 
-        clang_Cursor_getNumArguments(c) < 1 && return
-        arg0 = clang_Cursor_getArgument(c, 0)
+            if cu_kind(edges_decl) == CXCursor_ParmDecl
+                # Edges passed as a parameter — resolve at call sites (Pass 2).
+                pidx = findfirst(p -> clang_equalCursors(p, edges_decl) != 0, params)
+                pidx === nothing && return
+                # Register this function once (first matching loop wins).
+                any(t -> clang_equalCursors(t[1], func) != 0, param_funcs) && return
+                push!(param_funcs, (func, func_name, pidx))
 
-        # arg0 is ArrayToPointerDecay → DeclRefExpr → VarDecl with int[N][2] type
-        var_ref = cu_find(arg0, ch -> cu_kind(ch) == CXCursor_DeclRefExpr)
-        var_ref === nothing && return
+            elseif cu_kind(edges_decl) == CXCursor_VarDecl
+                # Edges defined locally — can extract directly, but there is no call
+                # to replace in the IR.  Emit the data anyway; pass.jl will skip it
+                # if it finds no call site named func_name.
+                edges = extract_edges(edges_decl)
+                edges === nothing && return
+                println("[clang.jl] local edges in $func_name: $(length(edges)) → $edges")
+                push!(results, Dict{String,Any}(
+                    "function_name" => func_name,
+                    "edges" => [[u, v] for (u, v) in edges],
+                    "num_edges" => length(edges)
+                ))
+            end
+        end)
+    end
 
-        var_decl = clang_getCursorReferenced(var_ref)
-        cu_kind(var_decl) != CXCursor_VarDecl && return
+    # Pass 2: find CallExprs invoking each param-based function; extract the edge arg.
+    if !isempty(param_funcs)
+        cu_walk(root, c -> begin
+            cu_kind(c) != CXCursor_CallExpr && return
 
-        !occursin("[2]", cu_type_spelling(var_decl)) && return
+            callee_ref = cu_find(c, ch -> cu_kind(ch) == CXCursor_DeclRefExpr)
+            callee_ref === nothing && return
+            referenced = clang_getCursorReferenced(callee_ref)
 
-        edges = extract_edges(var_decl)
-        edges === nothing && return
+            match_idx = findfirst(t -> clang_equalCursors(t[1], referenced) != 0, param_funcs)
+            match_idx === nothing && return
 
-        println("[clang.jl] call to $func_name: $(length(edges)) edges → $edges")
-        push!(results, Dict{String,Any}(
-            "function_name" => func_name,
-            "edges"         => [[u, v] for (u, v) in edges],
-            "num_edges"     => length(edges)
-        ))
-    end)
+            _, func_name, pidx = param_funcs[match_idx]
+
+            clang_Cursor_getNumArguments(c) < pidx && return
+            arg = clang_Cursor_getArgument(c, pidx - 1)   # 0-indexed
+
+            var_ref = cu_find(arg, ch -> cu_kind(ch) == CXCursor_DeclRefExpr)
+            var_ref === nothing && return
+
+            var_decl = clang_getCursorReferenced(var_ref)
+            cu_kind(var_decl) != CXCursor_VarDecl && return
+            !occursin("[2]", cu_type_spelling(var_decl)) && return
+
+            edges = extract_edges(var_decl)
+            edges === nothing && return
+
+            println("[clang.jl] call to $func_name: $(length(edges)) edges → $edges")
+            push!(results, Dict{String,Any}(
+                "function_name" => func_name,
+                "edges" => [[u, v] for (u, v) in edges],
+                "num_edges" => length(edges)
+            ))
+        end)
+    end
 
     results
 end
 
 # main
 idx = clang_createIndex(0, 0)
-tu  = clang_parseTranslationUnit(idx, INPUT_C, C_NULL, 0, C_NULL, 0, CXTranslationUnit_None)
+tu = clang_parseTranslationUnit(idx, INPUT_C, C_NULL, 0, C_NULL, 0, CXTranslationUnit_None)
 tu == C_NULL && (@error "parse failed: $INPUT_C"; exit(1))
 
-root       = clang_getTranslationUnitCursor(tu)
+root = clang_getTranslationUnitCursor(tu)
 detections = detect_maxcut(root, tu)
 
 open("quantum_manifest.json", "w") do f
@@ -338,6 +390,4 @@ end
 n = length(detections)
 println("[clang.jl] quantum_manifest.json - $n detection$(n == 1 ? "" : "s")")
 
-# Skip dispose + bypass Julia atexit handlers - the OS reclaims everything.
-# clang_disposeTranslationUnit + exit(0) races with @cfunction GC teardown.
 ccall(:_exit, Cvoid, (Cint,), 0)

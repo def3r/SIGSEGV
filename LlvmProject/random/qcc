@@ -17,7 +17,7 @@ elif [[ "$POSITIONAL" == "clean" ]]; then
   rm -rf *.json
   rm -rf *.o *.qasm
   rm -rf link.sh qtable.c
-  rm -rf after_mem2reg.ll after_quantum_pass.ll
+  rm -rf *.ll
   rm -rf qprog
   exit 0
 fi
@@ -32,7 +32,8 @@ opt -passes="mem2reg" -S "$filename.ll" -o after_mem2reg.ll
 #        create_sysimage(["Clang", "JSON"],
 #            sysimage_path="quantum_sysimage.so",
 #            precompile_execution_file="clang.jl")
-julia --sysimage quantum_sysimage.so clang.jl "$POSITIONAL"
+# julia --sysimage quantum_sysimage.so clang.jl "$POSITIONAL"
+julia clang.jl "$POSITIONAL"
 julia pass.jl after_mem2reg.ll
 
 # Ol way to embed hex dump
