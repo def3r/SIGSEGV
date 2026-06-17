@@ -43,6 +43,36 @@ even0s: even0s.y even0s.l
 	flex even0s.l
 	gcc even0s.tab.c lex.yy.c -o even0s.out
 
+sdt: sdt_parser.tab.c sdt_lexer.l
+	flex sdt_lexer.l
+	gcc sdt_parser.tab.c lex.yy.c -o sdt.out
+
+sdt_parser.tab.c:
+	bison -d sdt_parser.y
+
+inf2pof: inf2pof.tab.c inf2pof.l
+	bison -d inf2pof.y
+	flex inf2pof.l
+	gcc inf2pof.tab.c lex.yy.c -o inf2pof.out
+
+inf2pof.tab.c:
+	bison -d inf2pof.y
+
+redcount: redcount.y redcount.l
+	bison -d redcount.y
+	flex redcount.l
+	gcc redcount.tab.c lex.yy.c -o redcount.out
+
+ptht: ptht.y ptht.l
+	bison -d ptht.y
+	flex ptht.l
+	gcc ptht.tab.c lex.yy.c -o ptht.out
+
+binstr1: binstr1.y binstr1.l
+	bison -d binstr1.y
+	flex binstr1.l
+	gcc binstr1.tab.c lex.yy.c -o binstr1.out
+
 clean:
 	rm -rf lex.yy.c
 	rm -rf even0s.tab.c for2while.tab.c palindrome.tab.c balancedParan.tab.c anbn.tab.c

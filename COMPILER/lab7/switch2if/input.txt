@@ -1,0 +1,5 @@
+switch(expr) {
+  case val1: stmts1 break;
+  case val2: stmts2 break;
+  default:  stmts
+}
