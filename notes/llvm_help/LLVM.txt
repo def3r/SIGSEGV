@@ -1,0 +1,136 @@
+# LLVM HELP
+
+## Generic
+- llvm source code for different archs lives at: `llvm/lib/Target/`
+
+## ISSUES
+- `Implement clz using floating point math if clz instruction is not available` [#161746](https://github.com/llvm/llvm-project/issues/161746)
+  - `clz` instruction -> Count Leading Zeroes [src](https://stackoverflow.com/questions/9353973/implementation-of-builtin-clz)
+    - `llvm.ctlz` -> same thing, but llvm intrinsic
+  - `Zbb` -> RISC V bit manipulation ISA extension (one of `a`, `b`, `c` and `s` extension) [src](https://www.ece.lsu.edu/ee4720/doc/riscv-bitmanip-1.0.0.pdf)
+  - `llvm-mca` [LLVM Machine Code Analyzer](https://llvm.org/docs/CommandGuide/llvm-mca.html)
+  - `SelectionDAG`: [src: Revisit](https://llvm.org/devmtg/2024-10/slides/tutorial/MacLean-Fargnoli-ABeginnersGuide-to-SelectionDAG.pdf)
+    - Framework for instruction selection
+    - Part of `llc` (LLVM Static Compiler)
+    - Each `SelectionDAG` represents a single basic block
+  - `EVT` -> Extended Value Type
+  - `MVT` -> Machine Value Type
+  - `SetCC` -> Set Conditional Code
+  - `SDValue` -> Selection DAG Value
+  - `ISel` -> Instruction Selection
+  - `gpr` -> General Purpose Registers
+
+  - Opcodes:
+    - `CTLZ` -> count leading zeroes
+    - `CTLZ_ZERO_UNDEF` -> count leading zeroes but give undef behavior on zero
+
+  - X86:
+  - `SSE2` -> Streaming SIMD Extension 2 == Instruction Set for Intel SIMD
+  - `SSSE3` -> Suplemental Streaming SIMD Extension 3 (4th increment of the `SSE` tech)
+  - `XMM registers`
+    - 128-bit registers introduced with SSE for packed float/int computations
+    - In 64-bit mode for scalar floating-point math
+  - `AVX registers`
+    - `Advanced Vector Extension` registers for SIMD
+    - `YMM` uses 256-bit regs, `ZMM` uses 512 bit regs
+
+  - X86 ISA:
+  - `CVTSI2SD` -> Convert Doubleword Integer to Scalar Double-Precision Floating Point Values
+  - `CVTDQ2PD` -> Convert Packed Doubleword Integers to Packed Double Precision Floating-PointValues
+
+  - Tests:
+  - `Check` lines
+
+- `[GlobalISel] Port known-bit and known-sign-bits for all operations` [#150515](https://github.com/llvm/llvm-project/issues/150515)
+  - importing `FSHL` and `FSHR`
+  - `GISel` -> Global Instruction Selection
+  - `Exhaustive tesiting` -> Tests all possible values in the input set
+
+  - Opcodes:
+    - `zext` -> Zero extend
+
+## Commands
+### Build
+1. From inside the `build` dir:
+```bash
+mkdir build && cd build
+cmake -G "Ninja" \
+ -DCMAKE_INSTALL_PREFIX=../install \
+ -DCMAKE_BUILD_TYPE="Debug" \
+ -DLLVM_TARGETS_TO_BUILD="X86;AArch64" \
+ -DBUILD_SHARED_LIBS=1 \
+ -DCMAKE_CXX_FLAGS=" -ggdb3 -gdwarf-4 " \
+ -DLLVM_ENABLE_BINDINGS=OFF  \
+ ../llvm
+cd ..
+cmake --build build
+```
+
+2. `clang-format`: `git clang-format HEAD~1`
+3. `llvm-mca` Analsis: `build/bin/llvm-mca -mtriple=x86_64-unknown-unknown
+   -mcpu=core2 -timeline testv4_v2.asm > testv4_v2.txt`
+4. To enable projects: `-DLLVM_ENABLE_PROJECTS="clang;mlir"`
+5. Compile commands: `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`
+5. Compile Examples: `-DLLVM_BUILD_EXAMPLES=ON`
+
+### Tests
+1. build all tests (including tools): `ninja check-all -j8`
+2. Tests update script:
+```bash
+cmake --build build -- llc # First make sure binaries are up to date
+
+# Update scripts may differ
+llvm/utils/update_llc_test_checks.py \
+ --llc-binary build/bin/llc \
+ llvm/test/CodeGen/X86/vector-lzcnt-128.ll # This is the file to be updated
+```
+3. Run Single test file: `build/bin/llvm-lit build/test/CodeGen/X86/combine-srl.ll -v`
+4. Run Target specific tests: `cmake --build build --target check-llvm-codegen-x86`
+5. Run Regression tests only: `ninja check-llvm`
+
+#### MIR Tests
+1. Find a relevant MIR file, copy its contents, update tests
+2. Add Something like: `# RUN: llc -mtriple aarch64
+   -passes="print<gisel-value-tracking>" %s -o - 2>&1 | FileCheck %s`, at the
+   top of the file (This will be interpreted as a cmd by update script)
+3. Run the update script ex: `llvm/utils/update_givaluetracking_test_checks.py
+   --llc-binary=build/bin/llc
+   llvm/test/CodeGen/AArch64/GlobalISel/knownbits-fshl-fshr.mir`
+4. Tests add relevant `Check lines`
+
+#### Unit Tests
+1. build specific test: `cmake --build build --target SupportTests`
+2. Run the test: `build/unittests/Support/SupportTests --gtest_filter="*KnownBitsTest*"`
+
+## SUGGESTIONS
+1. [puttu.net](https://www.puttu.net/)
+  - [Building LLVM](https://github.com/vaivaswatha/misc/blob/master/LLVMBuild.md)
+
+## DOCS:
+1. [Test Suite Wiki](https://llvm.org/docs/TestSuiteGuide.html)
+2. [MIR Tests Wiki](https://llvm.org/docs/MIRLangRef.html#introduction)
+
+## Articles
+1. [Legalizations in LLVM Backend](https://myhsu.xyz/llvm-codegen-legalization/)
+  - [Funnel / Rotate Shifts](https://myhsu.xyz/llvm-codegen-legalization/#:~:text=What%20are%20funnel%20%2F%20rotate%20shifts)
+2. [Undef and Poison](https://github.com/thaliaarchi/compiler-notes/blob/main/llvm/devmtg_2020-10/undef_and_poison.md?plain=1)
+
+vim: foldmethod=indent
+
+
+help:
+SDValue TargetLowering::expandVPCTTZ(SDNode *Node, SelectionDAG &DAG) const {
+  SDValue Op = Node->getOperand(0);
+  SDValue Mask = Node->getOperand(1);
+  SDValue VL = Node->getOperand(2);
+  SDLoc dl(Node);
+  EVT VT = Node->getValueType(0);
+
+  // Same as the vector part of expandCTTZ, use: popcount(~x & (x - 1))
+  SDValue Not = DAG.getNode(ISD::VP_XOR, dl, VT, Op,
+                            DAG.getAllOnesConstant(dl, VT), Mask, VL);
+  SDValue MinusOne = DAG.getNode(ISD::VP_SUB, dl, VT, Op,
+                                 DAG.getConstant(1, dl, VT), Mask, VL);
+  SDValue Tmp = DAG.getNode(ISD::VP_AND, dl, VT, Not, MinusOne, Mask, VL);
+  return DAG.getNode(ISD::VP_CTPOP, dl, VT, Tmp, Mask, VL);
+}
