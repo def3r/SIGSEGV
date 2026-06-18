@@ -1,0 +1,219 @@
+#!/usr/bin/env python3
+"""
+Auto-register new/modified markdown files in registry.json and commit.
+
+Usage: python register.py
+"""
+
+import os
+import re
+import sys
+import json
+import subprocess
+
+BLOGS_DIR = os.path.dirname(os.path.abspath(__file__))
+REGISTRY_FILE = os.path.join(BLOGS_DIR, "registry.json")
+BLOG_IMAGES_DIR = os.path.join(BLOGS_DIR, "blog-images")
+SLUG_MAX_WORDS = 5
+
+
+def get_git_root():
+    result = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        capture_output=True, text=True, cwd=BLOGS_DIR,
+    )
+    if result.returncode != 0:
+        print("Error: not in a git repository.", file=sys.stderr)
+        sys.exit(1)
+    return result.stdout.strip()
+
+
+def get_uncommitted_md_files(git_root):
+    """Return list of .md filenames (relative to BLOGS_DIR) that are new or modified."""
+    blogs_rel = os.path.relpath(BLOGS_DIR, git_root)  # e.g. "blogs"
+
+    result = subprocess.run(
+        ["git", "status", "--porcelain", "--", f"{blogs_rel}/"],
+        capture_output=True, text=True, cwd=git_root,
+    )
+
+    md_files = []
+    whole_dir_untracked = False
+
+    for line in result.stdout.splitlines():
+        if len(line) < 3:
+            continue
+        status = line[:2]
+        path = line[3:].strip().strip('"')
+
+        # When the entire blogs/ dir is untracked git shows it as a single entry
+        if path.rstrip("/") == blogs_rel.rstrip("/"):
+            whole_dir_untracked = True
+            break
+
+        if path.endswith(".md"):
+            md_files.append(os.path.basename(path))
+
+    if whole_dir_untracked:
+        md_files = [f for f in os.listdir(BLOGS_DIR) if f.endswith(".md")]
+
+    return sorted(set(md_files))
+
+
+def extract_title(md_filename):
+    """Return text of the first h1 heading, with inline code stripped."""
+    path = os.path.join(BLOGS_DIR, md_filename)
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if line.startswith("# "):
+                title = line[2:].strip()
+                title = re.sub(r"`([^`]*)`", r"\1", title)   # strip backtick spans
+                title = re.sub(r"\*+([^*]*)\*+", r"\1", title)  # strip bold/italic
+                return title.strip()
+    return None
+
+
+def slugify(title):
+    """Lowercase, alphanumeric-hyphen slug, capped at SLUG_MAX_WORDS words."""
+    lowered = title.lower()
+    no_special = re.sub(r"[^\w\s-]", "", lowered)
+    words = no_special.split()[:SLUG_MAX_WORDS]
+    slug = "-".join(words)
+    slug = re.sub(r"-+", "-", slug).strip("-")
+    return slug
+
+
+def unique_slug(base, existing):
+    slug = base
+    counter = 2
+    while slug in existing:
+        slug = f"{base}-{counter}"
+        counter += 1
+    return slug
+
+
+def read_registry():
+    """Parse the JSON5-style registry (unquoted keys) into a Python list."""
+    with open(REGISTRY_FILE, encoding="utf-8") as fh:
+        raw = fh.read()
+    # Convert unquoted object keys → quoted so Python's json can parse it
+    normalized = re.sub(r'(?<=[{,])\s*(\w+)\s*:', r' "\1":', raw)
+    return json.loads(normalized)
+
+
+def write_registry(entries):
+    """Write entries back in the original { key: "val" } style."""
+    lines = ["["]
+    for i, e in enumerate(entries):
+        comma = "," if i < len(entries) - 1 else ""
+        lines.append(
+            f'  {{ "title": "{e["title"]}", "slug": "{e["slug"]}", "file": "{e["file"]}" }}{comma}'
+        )
+    lines.append("]")
+    with open(REGISTRY_FILE, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines) + "\n")
+
+
+def ensure_in_sparse_checkout(git_root, blogs_rel):
+    """Add blogs/ to sparse-checkout if the repo uses one and blogs/ is excluded."""
+    result = subprocess.run(
+        ["git", "config", "--get", "core.sparseCheckout"],
+        capture_output=True, text=True, cwd=git_root,
+    )
+    if result.stdout.strip() != "true":
+        return  # sparse checkout not active
+
+    list_result = subprocess.run(
+        ["git", "sparse-checkout", "list"],
+        capture_output=True, text=True, cwd=git_root,
+    )
+    dirs = list_result.stdout.splitlines()
+    if blogs_rel not in dirs and f"{blogs_rel}/" not in dirs:
+        print(f"Adding '{blogs_rel}' to sparse-checkout...")
+        subprocess.run(
+            ["git", "sparse-checkout", "add", blogs_rel],
+            cwd=git_root, check=True,
+        )
+
+
+def stage_files(git_root, paths):
+    # --sparse allows staging files outside the current sparse-checkout cone
+    subprocess.run(["git", "add", "--sparse", "--"] + paths, cwd=git_root, check=True)
+
+
+def commit(git_root, md_filenames):
+    args = ["git", "commit", "-m", "auto-commit: blogs"]
+    for name in md_filenames:
+        args += ["-m", f"- {name}"]
+    subprocess.run(args, cwd=git_root, check=True)
+
+
+def main():
+    git_root = get_git_root()
+    blogs_rel = os.path.relpath(BLOGS_DIR, git_root)
+    ensure_in_sparse_checkout(git_root, blogs_rel)
+
+    uncommitted = get_uncommitted_md_files(git_root)
+    if not uncommitted:
+        print("No uncommitted markdown files found in blogs/.")
+        return
+
+    print(f"Uncommitted .md files: {uncommitted}")
+
+    entries = read_registry()
+    existing_slugs = {e["slug"] for e in entries}
+    existing_files = {e["file"] for e in entries}
+
+    registry_dirty = False
+    to_commit_names = []
+
+    for md_name in uncommitted:
+        file_stem = os.path.splitext(md_name)[0]
+
+        if file_stem not in existing_files:
+            title = extract_title(md_name)
+            if not title:
+                print(f"  skip {md_name} - no h1 heading found")
+                continue
+            slug = unique_slug(slugify(title), existing_slugs)
+            existing_slugs.add(slug)
+            entries.append({"title": title, "slug": slug, "file": file_stem})
+            existing_files.add(file_stem)
+            registry_dirty = True
+            print(f"  + {md_name}  title='{title}'  slug='{slug}'")
+        else:
+            print(f"  ~ {md_name} - already in registry, queuing for commit")
+
+        to_commit_names.append(md_name)
+
+    if not to_commit_names:
+        print("Nothing to commit.")
+        return
+
+    if registry_dirty:
+        write_registry(entries)
+        print("registry.json updated.")
+
+    # Paths to stage (relative to git root)
+    to_stage = [
+        os.path.join(blogs_rel, name) for name in to_commit_names
+    ]
+    to_stage.append(os.path.join(blogs_rel, "registry.json"))
+
+    # Include blog-images/ if it has any uncommitted content
+    images_rel = os.path.join(blogs_rel, "blog-images")
+    img_status = subprocess.run(
+        ["git", "status", "--porcelain", "--", f"{images_rel}/"],
+        capture_output=True, text=True, cwd=git_root,
+    )
+    if img_status.stdout.strip():
+        to_stage.append(images_rel)
+
+    stage_files(git_root, to_stage)
+    # commit(git_root, to_commit_names)
+    print("Done - staged successfully.")
+
+
+if __name__ == "__main__":
+    main()
