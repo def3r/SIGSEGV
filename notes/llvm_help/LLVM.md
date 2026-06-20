@@ -112,4 +112,11 @@ llvm/utils/update_llc_test_checks.py \
   - [Funnel / Rotate Shifts](https://myhsu.xyz/llvm-codegen-legalization/#:~:text=What%20are%20funnel%20%2F%20rotate%20shifts)
 2. [Undef and Poison](https://github.com/thaliaarchi/compiler-notes/blob/main/llvm/devmtg_2020-10/undef_and_poison.md?plain=1)
 
+## `clang` to llvmir
+- Emit llvm ir: `clang -emit-llvm -S input.c`
+- flags:
+  - get var names instead of ssa values: `-fno-discard-value-names`
+- passes:
+  - Get rid of alloca: `opt -passes="mem2reg" -S input.ll -o output.ll`
+
 vim: foldmethod=indent

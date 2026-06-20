@@ -1,4 +1,6 @@
-### GREETINGS
+> GREETINGS
+> 
+> I own none of the art, I'd like to credit but idk the artists
 
 <img src="notes-images/greet.jpg">
 

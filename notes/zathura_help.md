@@ -9,6 +9,7 @@ docs: `https://pwmt.org/projects/zathura/documentation/`
 - `:set [option]` settings
 - `:info` doc info
 - `:o`/`:open` open new doc
+- `:set recolor true` to start in invert mode (`ctl + r` to toggle)
 
 # Motions
 - `R` refresh doc
