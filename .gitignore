@@ -2,3 +2,5 @@
 *.exe
 *.[aeiou]
 **.db
+
+**.venv/
