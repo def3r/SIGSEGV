@@ -20,4 +20,4 @@ if [ -n "$depfile" ]; then
     mkdir -p "$(dirname "$depfile")"
     touch "$depfile"
 fi
-exec "$real" "${filtered[@]}"
+exec "$real" --target nvidia "${filtered[@]}"

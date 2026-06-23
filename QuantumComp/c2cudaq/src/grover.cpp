@@ -6,9 +6,9 @@
 #include <string>
 #include <utility>
 
-// ── QFT helpers (repeated here; no shared header for __qpu__ structs) ─────────
+// ── QFT forward ───────────────────────────────────────────────────────────────
 struct factor_qft_fwd {
-    void operator()(cudaq::qview<> q) __qpu__ {
+    __qpu__ void operator()(cudaq::qview<> q) {
         int M = q.size();
         for (int si = 0; si < M; ++si) {
             int i = M - 1 - si;
@@ -22,6 +22,7 @@ struct factor_qft_fwd {
     }
 };
 
+// ── QFT inverse ───────────────────────────────────────────────────────────────
 struct factor_qft_inv {
     __qpu__ void operator()(cudaq::qview<> q) {
         int M = q.size();
@@ -35,42 +36,103 @@ struct factor_qft_inv {
     }
 };
 
-// ── Quantum-verified factor kernel ────────────────────────────────────────────
-// Computes a * b via QFT multiplier and measures the product register.
-// Used to verify a candidate (a, b) factor pair for n = a*b.
-// Note: not full Grover — uses quantum multiplication for verification only.
-//       Full Grover uncomputation requires explicit inverse mul (simulator-only
-//       workaround via cudaq::reset would be needed; see README).
-struct verify_mul_kernel {
-    __qpu__ void operator()(int a, int b, int sa, int sb) {
-        cudaq::qvector ra(sa), rb(sb);
+// ── Grover factoring kernel ───────────────────────────────────────────────────
+// Register layout (all allocated together so oracle and diffuser share qubits):
+//   work[0..sa-1]     = register a  (|a⟩, searched in superposition)
+//   work[sa..sa+sb-1] = register b  (|b⟩, searched in superposition)
+//   acc[0..sa+sb-1]   = product accumulator (initialized and restored to |0⟩)
+//   anc[0]            = phase ancilla (held in |−⟩ for kickback across all iters)
+//
+// Each Grover iteration:
+//   1. Forward QFT-multiply:    acc ← a * b  (in superposition)
+//   2. Phase oracle:            flip phase of |a,b⟩ states where a*b = n
+//   3. Inverse QFT-multiply:    acc ← |0⟩   (uncompute, no cudaq::adjoint)
+//   4. Grover diffuser:         amplify amplitude of solutions in |work⟩
+struct factor_grover_kernel {
+    __qpu__ void operator()(int n, int sa, int sb, int iters) {
+        int nwork    = sa + sb;
         int acc_size = sa + sb;
+
+        cudaq::qvector work(nwork);
         cudaq::qvector acc(acc_size);
+        cudaq::qvector anc(1);
 
-        for (int i = 0; i < sa; ++i) if ((a >> i) & 1) x(ra[i]);
-        for (int j = 0; j < sb; ++j) if ((b >> j) & 1) x(rb[j]);
+        // Uniform superposition over all candidate factor pairs |a⟩|b⟩
+        for (int j = 0; j < nwork; ++j) h(work[j]);
 
-        factor_qft_fwd{}(acc);
+        // Phase ancilla stays in |−⟩ = (|0⟩-|1⟩)/√2 throughout all iterations.
+        // MCX into this ancilla produces phase kickback without disturbing it.
+        x(anc[0]);
+        h(anc[0]);
 
-        for (int i = 0; i < sa; ++i)
-            for (int j = 0; j < sb; ++j) {
-                int p = i + j;
-                for (int k = p; k < acc_size; ++k) {
-                    double angle = M_PI / (double)(1LL << (k - p));
-                    r1<cudaq::ctrl>(angle, ra[i], rb[j], acc[k]);
+        for (int iter = 0; iter < iters; ++iter) {
+
+            // ── 1. Forward QFT multiply: acc = work_a * work_b ───────────────
+            // work[0..sa-1] = a bits (qubit i = bit i of a)
+            // work[sa..sa+sb-1] = b bits (qubit sa+j = bit j of b)
+            factor_qft_fwd{}(acc);
+            for (int i = 0; i < sa; ++i)
+                for (int j = 0; j < sb; ++j) {
+                    int p = i + j;
+                    for (int k = p; k < acc_size; ++k) {
+                        double angle = M_PI / (double)(1LL << (k - p));
+                        r1<cudaq::ctrl>(angle, work[i], work[sa + j], acc[k]);
+                    }
                 }
-            }
+            factor_qft_inv{}(acc);
 
-        factor_qft_inv{}(acc);
-        mz(acc);
+            // ── 2. Phase oracle: flip phase if acc == n ───────────────────────
+            // Flip bits where n has 0 so that n maps to the all-ones pattern.
+            for (int k = 0; k < acc_size; ++k)
+                if (!((n >> k) & 1)) x(acc[k]);
+            // MCX: all-ones in acc → kick phase into anc[0] via phase kickback.
+            x<cudaq::ctrl>(acc, anc[0]);
+            // Restore acc bit flips.
+            for (int k = 0; k < acc_size; ++k)
+                if (!((n >> k) & 1)) x(acc[k]);
+
+            // ── 3. Inverse QFT multiply: restore acc to |0⟩ ──────────────────
+            // (QFT · neg-phases · IQFT) is the inverse of (QFT · phases · IQFT)
+            // because (ABC)† = C† B† A† and R1(θ)† = R1(-θ), IQFT† = QFT.
+            factor_qft_fwd{}(acc);
+            for (int i = 0; i < sa; ++i)
+                for (int j = 0; j < sb; ++j) {
+                    int p = i + j;
+                    for (int k = p; k < acc_size; ++k) {
+                        double angle = -M_PI / (double)(1LL << (k - p));
+                        r1<cudaq::ctrl>(angle, work[i], work[sa + j], acc[k]);
+                    }
+                }
+            factor_qft_inv{}(acc);
+
+            // ── 4. Grover diffuser on work ────────────────────────────────────
+            // 2|s⟩⟨s| - I = H(2|0⟩⟨0| - I)H
+            // 2|0⟩⟨0| - I = X⊗n · (H · MCX · H on last) · X⊗n
+            for (int j = 0; j < nwork; ++j) h(work[j]);
+            for (int j = 0; j < nwork; ++j) x(work[j]);
+            h(work[nwork - 1]);
+            auto work_ctrl = work.front(nwork - 1);
+            x<cudaq::ctrl>(work_ctrl, work[nwork - 1]);
+            h(work[nwork - 1]);
+            for (int j = 0; j < nwork; ++j) x(work[j]);
+            for (int j = 0; j < nwork; ++j) h(work[j]);
+        }
+
+        mz(work);
     }
 };
 
-// ── Decode product bitstring → integer ───────────────────────────────────────
-static int64_t decode_product(const std::string& bits) {
-    std::string rev = bits;
-    std::reverse(rev.begin(), rev.end());
-    return (int64_t)std::stoull(rev, nullptr, 2);
+// ── Decode: split work bitstring into (a, b) ─────────────────────────────────
+// CUDA-Q most_probable() returns bits with qubit 0 first (LSB first).
+// work = [a_bits | b_bits], so string[0..sa-1] = a, string[sa..sa+sb-1] = b.
+static std::pair<int64_t, int64_t>
+decode_factors(const std::string& bits, int sa, int sb) {
+    auto half = [&](int start, int len) -> int64_t {
+        std::string sub = bits.substr(start, len);
+        std::reverse(sub.begin(), sub.end()); // make MSB-first for stoull
+        return (int64_t)std::stoull(sub, nullptr, 2);
+    };
+    return {half(0, sa), half(sa, sb)};
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -80,34 +142,34 @@ std::pair<int64_t, int64_t> c2q_factor(int64_t n) {
 
     int num_result = 0;
     { int64_t tmp = n; while (tmp) { ++num_result; tmp >>= 1; } }
-    int num_state  = (num_result + 1) / 2;
-    int total_q    = 2 * num_state + num_result;
 
-    if (num_result > 14)
+    // Use num_result-1 bits per factor register so both registers can represent
+    // any factor of n (factors range from 2 to n/2, needing up to num_result-1 bits).
+    // Using ceil(num_result/2) (the Python default) is wrong for asymmetric semiprimes
+    // like 15=3*5: the small factor (3) fits in 2 bits but the large one (5) does not,
+    // so the product register never reaches n and the oracle marks nothing.
+    int num_state = num_result - 1;
+
+    // Total: work(2*num_state) + acc(2*num_state) + anc(1)
+    int total_q = 4 * num_state + 1;
+    if (total_q > 28)
         throw std::runtime_error(
-            "c2q_factor: n too large — needs " + std::to_string(num_result) +
-            "-bit factors; limit is n < 2^14 (qubits: 4*ceil(bits/2) <= 28)");
+            "c2q_factor: n requires " + std::to_string(total_q) +
+            " qubits (simulator limit 28); safe range is n <= 127 (num_result <= 7)");
 
-    // Iterate over candidate factors and quantum-verify each with exact bit widths.
-    int64_t limit = (int64_t)std::sqrt((double)n) + 1;
-    for (int64_t a = 2; a <= limit; ++a) {
-        if (n % a != 0) continue;
-        int64_t b = n / a;
+    // Optimal Grover iterations ≈ (π/4) * sqrt(N/M)
+    // N = 2^(2*num_state) candidates, M = 2 for semiprime (both (p,q) and (q,p))
+    int iters = std::max(1, (int)std::round(
+        (M_PI / 4.0) * std::pow(2.0, (double)num_state - 0.5)));
 
-        // Compute exact bit widths for a and b so no truncation occurs.
-        int sa = 0; { int64_t tmp = a; while (tmp) { ++sa; tmp >>= 1; } }
-        int sb = 0; { int64_t tmp = b; while (tmp) { ++sb; tmp >>= 1; } }
-        int verify_q = sa + sb + sa + sb; // ra + rb + acc(sa+sb)
-        if (verify_q > 28) {
-            // Fall back to classical check when circuit would exceed simulator limit.
-            return {a, b};
-        }
+    auto counts = cudaq::sample(factor_grover_kernel{},
+                                (int)n, num_state, num_state, iters);
 
-        auto result  = cudaq::sample(verify_mul_kernel{}, (int)a, (int)b, sa, sb);
-        int64_t prod = decode_product(result.most_probable());
+    // Most probable state should be the amplified factor pair after Grover.
+    auto [a, b] = decode_factors(counts.most_probable(), num_state, num_state);
 
-        if (prod == n) return {a, b};
-    }
+    if (a > 1 && b > 1 && a * b == n)
+        return {std::min(a, b), std::max(a, b)};
 
-    return {1, n}; // trivial — n is prime
+    return {1, n};  // n is prime or didn't converge this run
 }

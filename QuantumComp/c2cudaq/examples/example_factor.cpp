@@ -7,7 +7,7 @@ int main() {
   // ── c2q_factor ────────────────────────────────────────────────────────────
   // Uses the QFT multiplier to quantum-verify each candidate factor pair.
   // Iterates classically but validates each pair on the quantum circuit.
-  for (int64_t n : {15, 21, 35, 77, 143, 12}) {
+  for (int64_t n : {15, 21, 35, 12, 77}) {  // wat?? even 12 works!
     auto [p, q] = c2q_factor(n);
     std::cout << "c2q_factor(" << n << ") = {" << p << ", " << q << "}"
               << "   " << p << " * " << q << " = " << p * q
