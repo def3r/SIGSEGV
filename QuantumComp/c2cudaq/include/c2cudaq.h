@@ -49,13 +49,19 @@ int64_t c2q_mul(int64_t a, int64_t b);
 // Safe range: size_a + size_b ≤ 14 qubits total in accumulator.
 int64_t c2q_mul(int64_t a, int64_t b, int size_a, int size_b);
 
-// ── Factorization
-// ───────────────────────────────────────────────────────────── Finds a
-// non-trivial factor pair (p, q) with p*q == n using quantum multiplication for
-// verification.  Returns {1, n} if no factor is found. Note: uses QFT
-// multiplier, not full Grover; simulator-only. Safe range: n ≤ 255  (result
-// register ≤ 8 qubits).
+// ── Factorization ────────────────────────────────────────────────────────────
+// Grover+oracle approach: searches for factor pairs in superposition.
+// Uses QFT-multiply oracle + Grover diffuser.  Returns {1, n} if no non-trivial
+// factor is found (n is prime or search didn't converge).
+// Safe range: n ≤ 127  (total qubits = 4*ceil(log2(n))-3 ≤ 21).
 std::pair<int64_t, int64_t> c2q_factor(int64_t n);
+
+// Shor's algorithm (QPE-based order finding) using the CUDA-Q builder API.
+// Builds the QPE circuit dynamically at runtime; controlled modular
+// multiplication is implemented via cycle-transposition decomposition.
+// Returns {1, n} if no non-trivial factor is found.
+// Safe range: n ≤ 255  (total qubits = 3*ceil(log2(n))+2 ≤ 26).
+std::pair<int64_t, int64_t> c2q_factor_shor(int64_t n);
 
 // ── Graph problems — QAOA ────────────────────────────────────────────────────
 // All graph functions run QAOA with COBYLA optimizer.
