@@ -122,6 +122,12 @@ points to an array of 2 integers, `edges[i][0]` and `edges[i][1]`. Moving 4
 bytes from the `edges[i]` points to `edges[i][1]` because the edges store
 integers(4 bytes).
 
+Why use *i8* and then *offset* it instead of directly using the type *i32*?
+Good question. The [Archive of the proposal to use *i8* for canonical GEPs with
+const offset](https://discourse.llvm.org/t/opaque-pointers-and-i8-geps/58862)
+contains the reason behind it. It has something to do with the [LLVM Opaque
+Pointer Type](https://llvm.org/docs/OpaquePointers.html).
+
 `load` instruction then derefs the *%arrayidx4* to get the element
 `edges[i][1]`
 
