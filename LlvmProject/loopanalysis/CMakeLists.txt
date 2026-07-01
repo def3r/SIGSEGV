@@ -15,4 +15,5 @@ include_directories(${LLVM_INCLUDE_DIRS})
 
 add_llvm_pass_plugin(MinPass
   pass.cpp
+  maxcut_cpp_pass.cpp
 )
