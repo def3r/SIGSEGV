@@ -119,4 +119,31 @@ llvm/utils/update_llc_test_checks.py \
 - passes:
   - Get rid of alloca: `opt -passes="mem2reg" -S input.ll -o output.ll`
 
+## Issues to take
+- https://github.com/llvm/llvm-project/issues/174584
+- stale: https://github.com/llvm/llvm-project/pull/195405 ::
+  https://github.com/llvm/llvm-project/issues/189583
+- Too late: https://github.com/llvm/llvm-project/issues/195462
+- The rem func: https://github.com/llvm/llvm-project/issues/116695
+  examples: https://github.com/llvm/llvm-project/pull/120030
+            https://github.com/llvm/llvm-project/pull/120903
+    (stale) https://github.com/llvm/llvm-project/pull/167147
+- Good Read: https://github.com/llvm/llvm-project/issues/174214
+- Must Read: https://dl.acm.org/doi/pdf/10.1145/3808250
+
+### Come back after sometime
+- https://github.com/llvm/llvm-project/issues/189694
+- [ ] *`assigned`* instcombine one: https://github.com/llvm/llvm-project/issues/165306
+- MIRSample crash https://github.com/llvm/llvm-project/issues/189764
+- https://github.com/llvm/llvm-project/issues/189479
+- IT@VJTI: https://github.com/llvm/llvm-project/issues/164161
+- Not any contenders: https://github.com/llvm/llvm-project/issues/161642
+- Maybe look at it in August: https://github.com/llvm/llvm-project/issues/156883
+- Maybe mid July: https://github.com/llvm/llvm-project/issues/139786
+
+OR
+
+- https://github.com/llvm/llvm-project/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22good%20first%20issue%22&page=4
+- https://github.com/llvm/llvm-project/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22good%20first%20issue%22%20no%3Aassignee%20sort%3Aupdated-desc
+
 vim: foldmethod=indent

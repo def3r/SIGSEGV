@@ -131,6 +131,14 @@ Pointer Type](https://llvm.org/docs/OpaquePointers.html).
 `load` instruction then derefs the *%arrayidx4* to get the element
 `edges[i][1]`
 
+## Algorithm Recogonition
+> ref
+> https://www.plaintextcomms.com/wp-content/uploads/2018/05/sample_algo_recog.pdf
+
+- 1970s : Control Flow Analysis, Data Flow Analysis, Name Association.
+- 1980s : Side Effect Analysis
+- *Writing the identification and replacement code was time-consuming and error-prone.*
+
 ## References
 - [Docs Loop Terminology](https://rocm.docs.amd.com/projects/llvm-project/en/latest/LLVM/llvm/html/LoopTerminology.html)
 - [Docs LLVM Lang Ref](https://llvm.org/docs/LangRef.html)

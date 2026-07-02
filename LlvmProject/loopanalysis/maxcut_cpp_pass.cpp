@@ -293,6 +293,7 @@ static std::optional<ScoringLoopMatch> matchScoringLoop(Loop* L) {
     return std::nullopt;
 
   // 1.9: XOR gate conditions: u_in_subset and v_in_subset.
+  bool validXorOp = false;
   for (BasicBlock* Pred : PredsCutAdd) {
     auto* CBR = dyn_cast<CondBrInst>(Pred->getTerminator());
     Value* BC = CBR->getCondition();
@@ -341,15 +342,14 @@ static std::optional<ScoringLoopMatch> matchScoringLoop(Loop* L) {
       if (auto* CB = dyn_cast<CallBase>(VecEnd)) {
         if (Function* Callee = CB->getCalledFunction()) {
           StringRef mangled = Callee->getName();
-          if (mangled.find("end") != std::string::npos &&
-              demangleContains(
-                  CB, "std::vector<int, std::allocator<int>>::end()")) {
-            validFinds[idx] = true;
-          }
+          validFinds[idx] =
+              mangled.find("end") != std::string::npos &&
+              demangleContains(CB,
+                               "std::vector<int, std::allocator<int>>::end()");
         }
       }
 
-      return true;
+      return validFinds[idx];
     };
 
     if (!(isValidCmp(XorInst->getOperand(0)) &&
@@ -360,11 +360,25 @@ static std::optional<ScoringLoopMatch> matchScoringLoop(Loop* L) {
     // We can say true condition shall goto inc and false to latch
     if (TrueLabel != CutAdd->getParent() && FalseLabel != Latch)
       return std::nullopt;
+    validXorOp = true;
+    break;
   }
+  if (!validXorOp)
+    return std::nullopt;
 
   // 1.7: Latch GEP: getelementptr <StructType>, PtrPhi, i32 1.
   //        The pair<int,int> element type distinguishes this from outer loops.
   GetElementPtrInst* LatchGEP = nullptr;
+
+  // GetU->getArgOperand(0) is %0, the alloca holding the pair copy.
+  auto* PairAlloca = dyn_cast_or_null<AllocaInst>(
+      stripToContainerSource(GetU->getArgOperand(0)));
+  if (!PairAlloca)
+    return std::nullopt;
+  Type* PairTy = PairAlloca->getAllocatedType();
+  const DataLayout& DL = Header->getModule()->getDataLayout();
+  uint64_t ExpectedStride = DL.getTypeAllocSize(PairTy);
+
   for (Instruction& I : *Latch) {
     auto* GEP = dyn_cast<GetElementPtrInst>(&I);
     if (!GEP || GEP->getPointerOperand() != PtrPhi)
@@ -372,7 +386,7 @@ static std::optional<ScoringLoopMatch> matchScoringLoop(Loop* L) {
     if (GEP->getNumIndices() != 1)
       continue;
     auto* Idx = dyn_cast<ConstantInt>(GEP->idx_begin()->get());
-    if (!Idx || !Idx->equalsInt(8))
+    if (!Idx || !Idx->equalsInt(ExpectedStride))
       continue;
     if (!GEP->getSourceElementType()->isIntegerTy(8))
       continue;
@@ -474,6 +488,9 @@ static std::optional<MaxCutMatch> matchMaxCut(const ScoringLoopMatch& Inner,
 
   // BFS from MaxCompare's successors to find the merge phi
   // (phi with one incoming = CutLCSSA, one = MaxPhi).
+  //
+  // if there's no vector calls, simplifycfg folds cmp to:
+  //  %best.new = select i1 %cmp, i32 %cut, i32 %best
   PHINode* MaxUpdatePhi = nullptr;
   {
     SmallVector<BasicBlock*, 8> Worklist(successors(MaxCompare->getParent()));
@@ -507,6 +524,15 @@ static std::optional<MaxCutMatch> matchMaxCut(const ScoringLoopMatch& Inner,
   // 2.5: Outer latch GEP advances OuterPtrPhi by 1 struct element.
   //        Element type is the vector struct (larger than a pair).
   GetElementPtrInst* OuterLatchGEP = nullptr;
+
+  auto* SubsetElemAlloca = dyn_cast<AllocaInst>(Inner.SubsetAlloca);
+
+  if (!SubsetElemAlloca)
+    return std::nullopt;
+  Type* OuterElemTy = SubsetElemAlloca->getAllocatedType();
+  const DataLayout& DL = OuterHeader->getModule()->getDataLayout();
+  uint64_t OuterStride = DL.getTypeAllocSize(OuterElemTy);
+
   for (Instruction& I : *OuterLatch) {
     auto* GEP = dyn_cast<GetElementPtrInst>(&I);
     if (!GEP || GEP->getPointerOperand() != OuterPtrPhi)
@@ -514,7 +540,7 @@ static std::optional<MaxCutMatch> matchMaxCut(const ScoringLoopMatch& Inner,
     if (GEP->getNumIndices() != 1)
       continue;
     auto* Idx = dyn_cast<ConstantInt>(GEP->idx_begin()->get());
-    if (!Idx || !Idx->equalsInt(24))
+    if (!Idx || !Idx->equalsInt(OuterStride))
       continue;
     if (!GEP->getSourceElementType()->isIntegerTy(8))
       continue;
