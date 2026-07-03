@@ -1,4 +1,5 @@
 #include <array>
+#include <cstdint>
 #include <optional>
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
@@ -10,46 +11,50 @@
 #include "llvm/IR/PassManager.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+
+#define DEBUG_TYPE "maxcut-cpp"  // -debug-only=maxcut-cpp
 
 using namespace llvm;
 
 // Data structures
 struct ScoringLoopMatch {
   Loop* L;
-  PHINode* PtrPhi;         // pointer-walk induction var (edge iterator)
-  PHINode* AccPhi;         // i32 cut accumulator, preheader init = 0
-  Value* EdgesEnd;         // loop-invariant end-of-range pointer
-  CallBase* FindU;         // std::find call for endpoint u  (get<0>)
-  CallBase* FindV;         // std::find call for endpoint v  (get<1>)
-  Value* SubsetAlloca;     // alloca/arg both finds search in
-  BinaryOperator* CutAdd;  // add nsw i32 AccPhi, 1
+  PHINode* PtrPhi;               // pointer-walk induction var (edge iterator)
+  PHINode* AccPhi;               // i32 cut accumulator, preheader init = 0
+  Value* EdgesEnd;               // loop-invariant end-of-range pointer
+  CallBase* FindU;               // std::find call for endpoint u  (get<0>)
+  CallBase* FindV;               // std::find call for endpoint v  (get<1>)
+  Value* SubsetAlloca;           // alloca/arg both finds search in
+  BinaryOperator* CutAdd;        // add i32 AccPhi, (1 or zext(xor))
+  APInt Increment{64, 1, true};  // cut increment weight; 1 by default
 };
 
 struct MaxCutMatch {
   ScoringLoopMatch Inner;
 
   Loop* OuterL;
-  PHINode* OuterPtrPhi;   // pointer-walk iv over subsets
-  PHINode* MaxPhi;        // i32 max accumulator, preheader init = 0
-  PHINode* CutLCSSA;      // AccPhi LCSSA phi at inner exit
-  ICmpInst* MaxCompare;   // icmp sgt CutLCSSA, MaxPhi
-  PHINode* MaxUpdatePhi;  // phi that selects max(CutLCSSA, MaxPhi)
-  // PHINode* MaxLCSSA;      // MaxPhi LCSSA phi at outer exit (final value)
+  PHINode* OuterPtrPhi;  // pointer-walk iv over subsets
+  PHINode* MaxPhi;       // i32 max accumulator, preheader init = 0
+  PHINode*
+      CutLCSSA;  // AccPhi LCSSA phi at inner exit (or Inner.AccPhi directly)
+  ICmpInst*
+      MaxCompare;  // icmp sgt CutLCSSA, MaxPhi — null when smax intrinsic used
+  Value* MaxUpdatePhi;  // phi/select/smax that produces max(CutLCSSA, MaxPhi)
 
   // Subset enumeration - future removal target
   Value* SubsetsAlloca;
-  Loop* EnumOuterLoop;  // loop that builds SubsetsAlloca
-  Loop* EnumInnerLoop;  // nested subset-builder loop
+  Loop* EnumOuterLoop;
+  Loop* EnumInnerLoop;
 
   // Inputs
-  Value* EdgesContainer;  // alloca or Argument for the edges vector
+  Value* EdgesContainer;
 };
 
-// Helpers: structural only, no variable-name matching
+// ---- Helpers ---------------------------------------------------------------
 
 // Trace through call chains and bitcasts to reach an AllocaInst or Argument.
-// Models: result-of-begin(container) → container, etc.
 static Value* stripToContainerSource(Value* V) {
   while (V) {
     if (isa<AllocaInst>(V) || isa<Argument>(V))
@@ -69,19 +74,37 @@ static Value* stripToContainerSource(Value* V) {
   return nullptr;
 }
 
-// Mangled-name prefix/substring checks.  These match on the STL function's
-// type signature encoded in the ABI name - NOT on user variable names.
+// When find() searches for a cast value (e.g. `(int)(long long)`), the search
+// arg is an i32 alloca populated by: store (trunc/cast (load get<N>(...))).
+// Trace back through those layers to the get<> CallBase, or return nullptr.
+static CallBase* traceGetThroughCast(Value* Arg) {
+  auto* Alloca = dyn_cast<AllocaInst>(Arg);
+  if (!Alloca)
+    return nullptr;
+  for (User* U : Alloca->users()) {
+    auto* SI = dyn_cast<StoreInst>(U);
+    if (!SI || SI->getPointerOperand() != Alloca)
+      continue;
+    Value* Stored = SI->getValueOperand();
+    while (auto* Cast = dyn_cast<CastInst>(Stored))
+      Stored = Cast->getOperand(0);
+    auto* LI = dyn_cast<LoadInst>(Stored);
+    if (!LI)
+      continue;
+    if (auto* CB = dyn_cast<CallBase>(LI->getPointerOperand()))
+      return CB;
+  }
+  return nullptr;
+}
+
 static bool demangleContains(const CallBase* CB, StringRef Sub) {
   const Function* F = CB->getCalledFunction();
   std::string demangled = demangle(F->getName());
-  StringRef D(demangled);
-  errs() << "Demangled: " << D << "\n";
-  return D.contains(Sub);
+  LLVM_DEBUG(dbgs() << "Demangled: " << demangled << "\n");
+  return StringRef(demangled).contains(Sub);
 }
 
 // Return the unique non-EH exit block of L, or nullptr.
-// getExitBlock() counts landingpad targets as exits; we want only the normal
-// one.
 static BasicBlock* getNormalExitBlock(Loop* L) {
   BasicBlock* ExitBB = nullptr;
   for (BasicBlock* BB : L->blocks()) {
@@ -89,21 +112,19 @@ static BasicBlock* getNormalExitBlock(Loop* L) {
       if (L->contains(Succ) || Succ->isEHPad())
         continue;
       if (ExitBB && ExitBB != Succ)
-        return nullptr;  // more than one
+        return nullptr;
       ExitBB = Succ;
     }
   }
   return ExitBB;
 }
 
-// Extract the condition of a conditional branch at the end of BB, or nullptr.
 static Value* getCondBrCondition(BasicBlock* BB) {
   if (auto* CBR = dyn_cast<CondBrInst>(BB->getTerminator()))
     return CBR->getCondition();
   return nullptr;
 }
 
-// Collect every loop in the nest rooted at Root into Out (preorder).
 static void collectAllLoops(Loop* Root, SmallVectorImpl<Loop*>& Out) {
   Out.push_back(Root);
   for (Loop* Sub : Root->getSubLoops())
@@ -116,18 +137,18 @@ static std::optional<ScoringLoopMatch> matchScoringLoop(Loop* L) {
   BasicBlock* Preheader = L->getLoopPreheader();
   BasicBlock* Latch = L->getLoopLatch();
   if (!Preheader || !Latch) {
-    errs() << "No preheader || latch" << "\n";
+    LLVM_DEBUG(dbgs() << "No preheader || latch\n");
     return std::nullopt;
   }
 
   // 1.1: Exactly 2 header phis: one ptr, one i32 initialised to 0.
   PHINode *PtrPhi = nullptr, *AccPhi = nullptr;
   unsigned PhiCount = 0;
-  errs() << Preheader->getName() << ", " << Header->getName() << "\n";
+  LLVM_DEBUG(dbgs() << Preheader->getName() << ", " << Header->getName()
+                    << "\n");
   for (PHINode& PN : Header->phis()) {
     if (++PhiCount > 2)
       return std::nullopt;
-
     if (PN.getType()->isPointerTy()) {
       if (PtrPhi)
         return std::nullopt;
@@ -145,14 +166,13 @@ static std::optional<ScoringLoopMatch> matchScoringLoop(Loop* L) {
     }
   }
   if (!PtrPhi || !AccPhi) {
-    errs() << "No 2 phis\n";
+    LLVM_DEBUG(dbgs() << "No 2 phis\n");
     return std::nullopt;
   }
-  errs() << "Accepted!\n";
+  LLVM_DEBUG(dbgs() << "Accepted!\n");
 
   // 1.2: Loop condition
-  //  br i1 %cmp.i80.not, label %for.end, label %for.body11
-  // We know this comparison is to check subset_begin != end
+  // accept EQ or NE with correct successor direction.
   auto* ICmp = dyn_cast_or_null<ICmpInst>(getCondBrCondition(Header));
   if (!ICmp || !(ICmp->getPredicate() == ICmpInst::ICMP_EQ ||
                  ICmp->getPredicate() == ICmpInst::ICMP_NE))
@@ -160,18 +180,16 @@ static std::optional<ScoringLoopMatch> matchScoringLoop(Loop* L) {
   CondBrInst* BI = dyn_cast<CondBrInst>(Header->getTerminator());
   BasicBlock* TrueSucc = BI->getSuccessor(0);
   BasicBlock* FalseSucc = BI->getSuccessor(1);
-
-  errs() << "Predicate: " << ICmp->getPredicate() << "\n";
-  errs() << "FalseSucc: " << FalseSucc->getName()
-         << "\tTrueSucc: " << TrueSucc->getName() << "\n";
-  errs() << L->contains(FalseSucc) << "\t" << L->contains(TrueSucc) << "\n";
+  LLVM_DEBUG(dbgs() << "Predicate: " << ICmp->getPredicate() << "\n"
+                    << "FalseSucc: " << FalseSucc->getName()
+                    << "\tTrueSucc: " << TrueSucc->getName() << "\n"
+                    << L->contains(FalseSucc) << "\t" << L->contains(TrueSucc)
+                    << "\n");
+  if (!((ICmp->getPredicate() == ICmpInst::ICMP_NE && L->contains(TrueSucc)) ||
+        (ICmp->getPredicate() == ICmpInst::ICMP_EQ && L->contains(FalseSucc))))
+    return std::nullopt;
 
   Value* EdgesEnd = nullptr;
-  if (!((ICmp->getPredicate() == ICmpInst::ICMP_NE && L->contains(TrueSucc)) ||
-        (ICmp->getPredicate() == ICmpInst::ICMP_EQ &&
-         L->contains(FalseSucc)))) {
-    return std::nullopt;
-  }
   if (ICmp->getOperand(0) == PtrPhi)
     EdgesEnd = ICmp->getOperand(1);
   else if (ICmp->getOperand(1) == PtrPhi)
@@ -180,16 +198,16 @@ static std::optional<ScoringLoopMatch> matchScoringLoop(Loop* L) {
     return std::nullopt;
   if (!L->isLoopInvariant(EdgesEnd))
     return std::nullopt;
-  errs() << "Phi Init\n";
+  LLVM_DEBUG(dbgs() << "Phi Init\n");
 
-  // Build a set of blocks that belong to subloops so we don't scan them.
+  // Build subloop block set so we can skip them in inner scans.
   SmallPtrSet<BasicBlock*, 16> SubLoopBlocks;
   for (Loop* Sub : L->getSubLoops())
     for (BasicBlock* BB : Sub->blocks())
       SubLoopBlocks.insert(BB);
 
   // 1.3: Exactly 2 std::find calls in the loop's own (non-subloop) blocks.
-  // TODO: For now we only consider exact std::find pattern match
+  // TODO: Maybe better if 2 finds on subsetAlloca and not in general 2
   SmallVector<CallBase*, 2> Finds;
   for (BasicBlock* BB : L->blocks()) {
     if (Finds.size() > 2)
@@ -200,35 +218,43 @@ static std::optional<ScoringLoopMatch> matchScoringLoop(Loop* L) {
       if (auto* CB = dyn_cast<CallBase>(&I)) {
         if (Function* Callee = CB->getCalledFunction()) {
           StringRef mangled = Callee->getName();
-          if (mangled.find("find") != std::string::npos &&
-              demangleContains(CB, "std::find<")) {
+          bool isMembership =
+              (mangled.find("find") != std::string::npos &&
+               demangleContains(CB, "std::find<")) ||
+              (mangled.find("count") != std::string::npos &&
+               demangleContains(CB, "std::count<"));
+          if (isMembership)
             Finds.push_back(CB);
-          }
         }
       }
     }
   }
   if (Finds.size() != 2) {
-    errs() << "Not enough finds\n";
+    LLVM_DEBUG(dbgs() << "Not enough finds\n");
     return std::nullopt;
   }
   CallBase *FindU = Finds[0], *FindV = Finds[1];
   if (FindU->arg_size() < 3 || FindV->arg_size() < 3)
     return std::nullopt;
-  errs() << "All fine(d)\n";
+  LLVM_DEBUG(dbgs() << "All fine(d)\n");
 
   // 1.4: Both finds search the same container.
-  // Handles CSE'd and non-CSE'd begin() by tracing through calls to the source.
   Value* ContU = stripToContainerSource(FindU->getArgOperand(0));
   Value* ContV = stripToContainerSource(FindV->getArgOperand(0));
   if (!ContU || (ContU != ContV))
     return std::nullopt;
   Value* SubsetAlloca = ContU;
 
-  // 1.5: Search values are std::get<0> and std::get<1> of the same pair
-  // alloca.
+  // 1.5: Search values are std::get<0> and std::get<1> of the same pair alloca.
+  // Direct: find(..., get<N>(pair))
+  // Cast:   find(..., ref_tmp) where ref_tmp <-
+  // store(trunc(load(get<N>(pair))))
   auto* GetU = dyn_cast<CallBase>(FindU->getArgOperand(2));
+  if (!GetU)
+    GetU = traceGetThroughCast(FindU->getArgOperand(2));
   auto* GetV = dyn_cast<CallBase>(FindV->getArgOperand(2));
+  if (!GetV)
+    GetV = traceGetThroughCast(FindV->getArgOperand(2));
   if (!GetU || !GetV)
     return std::nullopt;
   if (!demangleContains(GetU, "std::get<"))
@@ -240,12 +266,78 @@ static std::optional<ScoringLoopMatch> matchScoringLoop(Loop* L) {
   if (GetU->getArgOperand(0) != GetV->getArgOperand(0))
     return std::nullopt;
 
-  // 1.6: Conditional add nsw i32 AccPhi, 1 that flows back into AccPhi.
-  auto isConstOne = [](Value* V) {
-    auto* C = dyn_cast<ConstantInt>(V);
-    return C && C->isOne();
+  // fix-7: verify one call is get<0> and the other is get<1>.
+  auto isGetIndex = [](const CallBase* CB, unsigned N) {
+    const Function* F = CB->getCalledFunction();
+    if (!F)
+      return false;
+    std::string D = demangle(F->getName());
+    std::string Needle = "std::get<" + std::to_string(N);
+    return StringRef(D).contains(Needle);
   };
+  if (!((isGetIndex(GetU, 0) && isGetIndex(GetV, 1)) ||
+        (isGetIndex(GetU, 1) && isGetIndex(GetV, 0))))
+    return std::nullopt;
+
+  // TODO: Hoist isValidCmp so it can be used in both the branching and
+  // branchless XOR gate paths below.
+  std::array<bool, 2> validFinds{false, false};
+  auto isValidCmp = [&](Value* V) {
+    auto* C = dyn_cast_or_null<ICmpInst>(V);
+    if (!C)
+      return false;
+    ICmpInst::Predicate Pred = C->getPredicate();
+    if (Pred != ICmpInst::ICMP_NE && Pred != ICmpInst::ICMP_SGT)
+      return false;
+    Value* VecEnd = nullptr;
+    int idx = 0;
+    if (FindU == C->getOperand(0) || FindU == C->getOperand(1)) {
+      if (validFinds[idx])
+        return false;
+      VecEnd = FindU == C->getOperand(0) ? C->getOperand(1) : C->getOperand(0);
+    } else if (FindV == C->getOperand(0) || FindV == C->getOperand(1)) {
+      if (validFinds[idx = 1])
+        return false;
+      VecEnd = FindV == C->getOperand(0) ? C->getOperand(1) : C->getOperand(0);
+    } else
+      return false;
+    // find() != end()
+    if (Pred == ICmpInst::ICMP_NE) {
+      if (auto* CB = dyn_cast<CallBase>(VecEnd)) {
+        if (Function* Callee = CB->getCalledFunction()) {
+          StringRef mangled = Callee->getName();
+          validFinds[idx] = mangled.find("end") != std::string::npos &&
+                            demangleContains(CB, ">>::end()");
+        }
+      }
+    }
+    // count() != 0 or count() > 0
+    if (!validFinds[idx]) {
+      if (auto* Z = dyn_cast<ConstantInt>(VecEnd))
+        validFinds[idx] = Z->isZero();
+    }
+    return validFinds[idx];
+  };
+
+  // 1.6: CutAdd: add i32 AccPhi, <increment> that flows back into AccPhi.
+  // Branching form : increment = ConstantInt(1)
+  // Branchless form: increment = zext i1 <XOR result>  (fix-5b: LLVM folds
+  //   `if (u_in ^ v_in) cut++` to `cut += zext(u_in ^ v_in)` when the
+  //   if-body has no exception-throwing calls)
+  APInt IncWeight{64, 1, true};
+  auto isIncrement = [&](Value* V) -> bool {
+    if (auto* Z = dyn_cast<ZExtInst>(V))
+      return Z->getSrcTy()->isIntegerTy(1) && Z->getType()->isIntegerTy(32);
+    if (auto* C = dyn_cast<ConstantInt>(V); C) {
+      IncWeight = C->getValue();
+      LLVM_DEBUG(dbgs() << "IncWeight Found: " << IncWeight << "\n");
+      return true;
+    }
+    return false;
+  };
+
   BinaryOperator* CutAdd = nullptr;
+  Value* IncrVal = nullptr;
   for (BasicBlock* BB : L->blocks()) {
     if (BB == Header || SubLoopBlocks.count(BB))
       continue;
@@ -254,123 +346,111 @@ static std::optional<ScoringLoopMatch> matchScoringLoop(Loop* L) {
       if (!BinOp || BinOp->getOpcode() != Instruction::Add)
         continue;
       Value *Op0 = BinOp->getOperand(0), *Op1 = BinOp->getOperand(1);
-      if (!((Op0 == AccPhi && isConstOne(Op1)) ||
-            (Op1 == AccPhi && isConstOne(Op0))))
+      Value* Incr = nullptr;
+      if (Op0 == AccPhi && isIncrement(Op1))
+        Incr = Op1;
+      else if (Op1 == AccPhi && isIncrement(Op0))
+        Incr = Op0;
+      else
         continue;
-      // Verify the add reaches AccPhi's backedge, possibly via a merge phi.
+      LLVM_DEBUG(dbgs() << "BinOp: " << *BinOp << "\n");
       Value* Back = AccPhi->getIncomingValueForBlock(Latch);
+      LLVM_DEBUG(dbgs() << "Back: " << *Back << "\n");
       bool Feeds = (Back == BinOp);
-      if (!Feeds)
-        if (auto* MP = dyn_cast<PHINode>(Back))
-          for (Value* V : MP->incoming_values())
+      if (!Feeds) {
+        if (auto* MP = dyn_cast<PHINode>(Back)) {
+          for (Value* V : MP->incoming_values()) {
+            LLVM_DEBUG(dbgs() << "V: " << *V << "\n");
             if (V == BinOp) {
               Feeds = true;
               break;
             }
+          }
+        } else if (auto* MP = dyn_cast<SelectInst>(Back)) {
+          for (Value* V : MP->operand_values()) {
+            LLVM_DEBUG(dbgs() << "V: " << *V << "\n");
+            if (V == BinOp) {
+              Feeds = true;
+              break;
+            }
+          }
+        }
+      }
       if (Feeds) {
         CutAdd = BinOp;
+        IncrVal = Incr;
         break;
       }
     }
+    if (CutAdd)
+      break;
   }
   if (!CutAdd)
     return std::nullopt;
+  LLVM_DEBUG(dbgs() << "IncrVal: " << *IncrVal << "\n");
+  LLVM_DEBUG(dbgs() << "CutAdd: " << *CutAdd << "\n");
 
-  // 1.8: CutAdd's block must have exactly 2 predecessors within the loop.
-  //        In the correct XOR diamond (||), two paths merge here:
-  //          u_in=T, v_in=F  →  cut block
-  //          u_in=F, v_in=T  →  cut block
-  //        With && (always-false), only one path can reach this block, so
-  //        pred_count == 1 and we correctly reject.
-  //  OR
-  // TODO: reduced to XOR by simplifycfg and instcombine => 1 predecessor
-  SmallVector<BasicBlock*, 2> PredsCutAdd;
-  for (BasicBlock* Pred : predecessors(CutAdd->getParent())) {
-    if (L->contains(Pred))
-      PredsCutAdd.push_back(Pred);
-  }
-  if (PredsCutAdd.size() > 2)
-    return std::nullopt;
-
-  // 1.9: XOR gate conditions: u_in_subset and v_in_subset.
+  // 1.9: XOR gate: verify exactly-one-endpoint semantics.
+  //
+  // Branchless form: IncrVal is `zext i1 (xor i1 ...)`; validate the XOR
+  //   instruction directly as it is an operand of the add.
+  //
+  // Branchless weighted form: IncrVal is a Constant other than 1, if branch is
+  //   coallesced to a select instruction
+  //
+  // Branching form: IncrVal is ConstantInt(1); locate the CondBrInst
+  //   predecessor of CutAdd's block and validate its condition.
   bool validXorOp = false;
-  for (BasicBlock* Pred : PredsCutAdd) {
-    auto* CBR = dyn_cast<CondBrInst>(Pred->getTerminator());
-    Value* BC = CBR->getCondition();
-    BasicBlock* TrueLabel = dyn_cast<BasicBlock>(CBR->getOperand(1));
-    BasicBlock* FalseLabel = dyn_cast<BasicBlock>(CBR->getOperand(2));
 
-    errs() << *BC << "\n"
-           << (TrueLabel == CutAdd->getParent()) << "\n"
-           << (FalseLabel == Latch) << "\n";
-
-    Instruction* XorInst = dyn_cast_or_null<Instruction>(BC);
-    if (!XorInst) {
-      errs() << "Not an inst!?\n";
-      continue;
-    }
-    if (XorInst->getOpcode() != Instruction::Xor) {
-      continue;
-    }
-
-    errs() << "\nInst: " << XorInst->getOpcodeName() << "\n"
-           << *XorInst->getOperand(0) << "\n"
-           << *XorInst->getOperand(1) << "\n";
-
-    std::array<bool, 2> validFinds{false, false};
-    auto isValidCmp = [&](Value* V) {
-      auto* C = dyn_cast_or_null<ICmpInst>(V);
-      if (!C || C->getPredicate() != ICmpInst::ICMP_NE)
-        return false;
-      Value* VecEnd = nullptr;
-      int idx = 0;
-
-      // TODO: Is this valid comparison?
-      if (FindU == C->getOperand(0) || FindU == C->getOperand(1)) {
-        if (validFinds[idx])
-          return false;
-        VecEnd =
-            FindU == C->getOperand(0) ? C->getOperand(1) : C->getOperand(0);
-      } else if (FindV == C->getOperand(0) || FindV == C->getOperand(1)) {
-        if (validFinds[idx = 1])
-          return false;
-        VecEnd =
-            FindV == C->getOperand(0) ? C->getOperand(1) : C->getOperand(0);
-      } else
-        return false;
-
-      if (auto* CB = dyn_cast<CallBase>(VecEnd)) {
-        if (Function* Callee = CB->getCalledFunction()) {
-          StringRef mangled = Callee->getName();
-          validFinds[idx] =
-              mangled.find("end") != std::string::npos &&
-              demangleContains(CB,
-                               "std::vector<int, std::allocator<int>>::end()");
-        }
-      }
-
-      return validFinds[idx];
-    };
-
-    if (!(isValidCmp(XorInst->getOperand(0)) &&
-          isValidCmp(XorInst->getOperand(1))))
-      return std::nullopt;
-
-    // Now that we know its an xor of vec::find != vec::end values
-    // We can say true condition shall goto inc and false to latch
-    if (TrueLabel != CutAdd->getParent() && FalseLabel != Latch)
-      return std::nullopt;
+  if (auto* ZE = dyn_cast<ZExtInst>(IncrVal)) {
+    auto* XorInst = dyn_cast<BinaryOperator>(ZE->getOperand(0));
+    validXorOp = (XorInst && XorInst->getOpcode() == Instruction::Xor &&
+                  isValidCmp(XorInst->getOperand(0)) &&
+                  isValidCmp(XorInst->getOperand(1)));
+  } else if (!IncWeight.isOne()) {
+    // This was validated by the select instruction 1.6
     validXorOp = true;
-    break;
+  } else {
+    SmallVector<BasicBlock*, 2> PredsCutAdd;
+    for (BasicBlock* Pred : predecessors(CutAdd->getParent()))
+      if (L->contains(Pred))
+        PredsCutAdd.push_back(Pred);
+    if (PredsCutAdd.size() > 2)
+      return std::nullopt;
+
+    for (BasicBlock* Pred : PredsCutAdd) {
+      auto* CBR = dyn_cast<CondBrInst>(Pred->getTerminator());
+      if (!CBR)
+        continue;
+      Value* BC = CBR->getCondition();
+      BasicBlock* TrueLabel = CBR->getSuccessor(0);
+      BasicBlock* FalseLabel = CBR->getSuccessor(1);
+      LLVM_DEBUG(dbgs() << *BC << "\n"
+                        << (TrueLabel == CutAdd->getParent()) << "\n"
+                        << (FalseLabel == Latch) << "\n");
+
+      auto* XorInst = dyn_cast_or_null<BinaryOperator>(BC);
+      if (!XorInst || XorInst->getOpcode() != Instruction::Xor) {
+        LLVM_DEBUG(dbgs() << "Not XOR!\n");
+        continue;
+      }
+      LLVM_DEBUG(dbgs() << "\nInst: " << XorInst->getOpcodeName() << "\n"
+                        << *XorInst->getOperand(0) << "\n"
+                        << *XorInst->getOperand(1) << "\n");
+      if (!(isValidCmp(XorInst->getOperand(0)) &&
+            isValidCmp(XorInst->getOperand(1))))
+        return std::nullopt;
+      if (TrueLabel != CutAdd->getParent() && FalseLabel != Latch)
+        return std::nullopt;
+      validXorOp = true;
+      break;
+    }
   }
   if (!validXorOp)
     return std::nullopt;
 
-  // 1.7: Latch GEP: getelementptr <StructType>, PtrPhi, i32 1.
-  //        The pair<int,int> element type distinguishes this from outer loops.
+  // 1.7: Latch GEP: getelementptr i8, PtrPhi, <stride derived from DataLayout>.
   GetElementPtrInst* LatchGEP = nullptr;
-
-  // GetU->getArgOperand(0) is %0, the alloca holding the pair copy.
   auto* PairAlloca = dyn_cast_or_null<AllocaInst>(
       stripToContainerSource(GetU->getArgOperand(0)));
   if (!PairAlloca)
@@ -398,8 +478,8 @@ static std::optional<ScoringLoopMatch> matchScoringLoop(Loop* L) {
   if (!LatchGEP)
     return std::nullopt;
 
-  return ScoringLoopMatch{L,     PtrPhi, AccPhi,       EdgesEnd,
-                          FindU, FindV,  SubsetAlloca, CutAdd};
+  return ScoringLoopMatch{L,     PtrPhi,       AccPhi, EdgesEnd, FindU,
+                          FindV, SubsetAlloca, CutAdd, IncWeight};
 }
 
 // Phase 2: match the enclosing max-tracking loop
@@ -429,6 +509,8 @@ static std::optional<MaxCutMatch> matchMaxCut(const ScoringLoopMatch& Inner,
     } else if (PN.getType()->isIntegerTy(32)) {
       auto* Init =
           dyn_cast<ConstantInt>(PN.getIncomingValueForBlock(OuterPreheader));
+      // TODO: generalize to non-zero init (e.g. best = -1 as sentinel);
+      // currently only isZero() is accepted, so fn_nonzero_init is a false negative.
       if (!Init || !Init->isZero())
         return std::nullopt;
       if (MaxPhi)
@@ -442,9 +524,18 @@ static std::optional<MaxCutMatch> matchMaxCut(const ScoringLoopMatch& Inner,
     return std::nullopt;
 
   // 2.2: Outer condition
-  // icmp eq ptr OuterPtrPhi, <loop-invariant end>
+  // accept EQ and NE with direction check.
   auto* OuterICmp = dyn_cast_or_null<ICmpInst>(getCondBrCondition(OuterHeader));
-  if (!OuterICmp || OuterICmp->getPredicate() != ICmpInst::ICMP_EQ)
+  if (!OuterICmp || !(OuterICmp->getPredicate() == ICmpInst::ICMP_EQ ||
+                      OuterICmp->getPredicate() == ICmpInst::ICMP_NE))
+    return std::nullopt;
+  CondBrInst* OuterBI = dyn_cast<CondBrInst>(OuterHeader->getTerminator());
+  BasicBlock* OuterTrueSucc = OuterBI->getSuccessor(0);
+  BasicBlock* OuterFalseSucc = OuterBI->getSuccessor(1);
+  if (!((OuterICmp->getPredicate() == ICmpInst::ICMP_NE &&
+         OuterL->contains(OuterTrueSucc)) ||
+        (OuterICmp->getPredicate() == ICmpInst::ICMP_EQ &&
+         OuterL->contains(OuterFalseSucc))))
     return std::nullopt;
   Value* SubsetsEnd = nullptr;
   if (OuterICmp->getOperand(0) == OuterPtrPhi)
@@ -455,78 +546,121 @@ static std::optional<MaxCutMatch> matchMaxCut(const ScoringLoopMatch& Inner,
     return std::nullopt;
   if (!OuterL->isLoopInvariant(SubsetsEnd))
     return std::nullopt;
-  errs() << "2.2 done\n";
+  LLVM_DEBUG(dbgs() << "2.2 done\n");
 
-  // 2.3: LCSSA phi for the cut accumulator at the inner loop's normal exit.
+  // 2.3: Cut accumulator value used after the inner loop exits.
   BasicBlock* InnerExit = getNormalExitBlock(Inner.L);
   if (!InnerExit)
     return std::nullopt;
   PHINode* CutLCSSA = Inner.AccPhi;
-  errs() << "2.3 done\n";
+  LLVM_DEBUG(dbgs() << "2.3 done\n");
 
-  // 2.4: icmp sgt(CutLCSSA, MaxPhi) and a merge phi selecting the max value.
+  // fix-9: Build set of all inner-subloop blocks to avoid false matches inside
+  // the scoring loop when scanning for the max-selection instruction.
+  SmallPtrSet<BasicBlock*, 16> InnerSubLoopBlocks;
+  for (Loop* Sub : OuterL->getSubLoops())
+    for (BasicBlock* BB : Sub->blocks())
+      InnerSubLoopBlocks.insert(BB);
+
+  // 2.4: Find the max-selection instruction. Three forms:
+  //   (a) icmp sgt + phi merge (tp_basic: update block with vector assignments)
+  //   (b) icmp sgt + select    (fix-5: simplifycfg folds empty update block)
+  //   (c) @llvm.smax.i32       (fix-5b: LLVM >=20 may emit smax intrinsic
+  //                             instead of icmp+select for value-only tracking)
+  //
+  // The outer latch is NOT excluded: when form (c) fires, the smax lives in
+  // the same block as the backedge GEP (i.e., the latch itself).
   ICmpInst* MaxCompare = nullptr;
+  Value* MaxUpdatePhi = nullptr;
+
   for (BasicBlock* BB : OuterL->blocks()) {
-    if (BB == OuterHeader || BB == OuterLatch)
+    if (BB == OuterHeader || InnerSubLoopBlocks.count(BB))
       continue;
     for (Instruction& I : *BB) {
-      auto* Cmp = dyn_cast<ICmpInst>(&I);
-      if (!Cmp || Cmp->getPredicate() != ICmpInst::ICMP_SGT)
-        continue;
-      Value *A = Cmp->getOperand(0), *B = Cmp->getOperand(1);
-      if ((A == CutLCSSA && B == MaxPhi) || (A == MaxPhi && B == CutLCSSA)) {
-        MaxCompare = Cmp;
-        break;
+      if (!MaxCompare) {
+        if (auto* Cmp = dyn_cast<ICmpInst>(&I)) {
+          if (Cmp->getPredicate() == ICmpInst::ICMP_SGT) {
+            Value *A = Cmp->getOperand(0), *B = Cmp->getOperand(1);
+            if ((A == CutLCSSA && B == MaxPhi) ||
+                (A == MaxPhi && B == CutLCSSA))
+              MaxCompare = Cmp;
+          }
+        }
+      }
+      if (!MaxUpdatePhi) {
+        if (auto* CB = dyn_cast<CallBase>(&I)) {
+          if (Function* Callee = CB->getCalledFunction();
+              Callee && CB->arg_size() == 2 &&
+              Callee->getName().contains("llvm.smax")) {
+            Value *A = CB->getArgOperand(0), *B = CB->getArgOperand(1);
+            if ((A == CutLCSSA && B == MaxPhi) ||
+                (A == MaxPhi && B == CutLCSSA))
+              MaxUpdatePhi = CB;
+          }
+        }
       }
     }
-    if (MaxCompare)
+    if (MaxCompare || MaxUpdatePhi)
       break;
   }
-  if (!MaxCompare)
-    return std::nullopt;
-  errs() << "SGT Compared\n";
 
-  // BFS from MaxCompare's successors to find the merge phi
-  // (phi with one incoming = CutLCSSA, one = MaxPhi).
-  //
-  // if there's no vector calls, simplifycfg folds cmp to:
-  //  %best.new = select i1 %cmp, i32 %cut, i32 %best
-  PHINode* MaxUpdatePhi = nullptr;
-  {
-    SmallVector<BasicBlock*, 8> Worklist(successors(MaxCompare->getParent()));
-    SmallPtrSet<BasicBlock*, 8> Seen;
-    while (!Worklist.empty() && !MaxUpdatePhi) {
-      BasicBlock* BB = Worklist.pop_back_val();
-      if (!Seen.insert(BB).second || !OuterL->contains(BB))
-        continue;
-      for (PHINode& PN : BB->phis()) {
-        bool HasCut = false, HasMax = false;
-        for (Value* V : PN.incoming_values()) {
-          if (V == CutLCSSA)
-            HasCut = true;
-          if (V == MaxPhi)
-            HasMax = true;
+  if (!MaxCompare && !MaxUpdatePhi)
+    return std::nullopt;
+  LLVM_DEBUG(dbgs() << "SGT or smax found\n");
+
+  // For forms (a)/(b): BFS + SelectInst fallback.
+  if (MaxCompare && !MaxUpdatePhi) {
+    // BFS from MaxCompare's block searching for a phi that merges CutLCSSA
+    // and MaxPhi (form a).
+    {
+      PHINode* PhiForm = nullptr;
+      SmallVector<BasicBlock*, 8> Worklist(successors(MaxCompare->getParent()));
+      SmallPtrSet<BasicBlock*, 8> Seen;
+      while (!Worklist.empty() && !PhiForm) {
+        BasicBlock* BB = Worklist.pop_back_val();
+        if (!Seen.insert(BB).second || !OuterL->contains(BB))
+          continue;
+        for (PHINode& PN : BB->phis()) {
+          bool HasCut = false, HasMax = false;
+          for (Value* V : PN.incoming_values()) {
+            if (V == CutLCSSA)
+              HasCut = true;
+            if (V == MaxPhi)
+              HasMax = true;
+          }
+          if (HasCut && HasMax) {
+            PhiForm = &PN;
+            break;
+          }
         }
-        if (HasCut && HasMax) {
-          MaxUpdatePhi = &PN;
-          break;
+        if (!PhiForm)
+          for (BasicBlock* S : successors(BB))
+            Worklist.push_back(S);
+      }
+      MaxUpdatePhi = PhiForm;
+    }
+
+    // fix-5: SelectInst fallback (form b).
+    if (!MaxUpdatePhi) {
+      Value* LatchVal = MaxPhi->getIncomingValueForBlock(OuterLatch);
+      if (auto* Sel = dyn_cast<SelectInst>(LatchVal)) {
+        if (Sel->getCondition() == MaxCompare) {
+          Value *TV = Sel->getTrueValue(), *FV = Sel->getFalseValue();
+          if ((TV == CutLCSSA && FV == MaxPhi) ||
+              (TV == MaxPhi && FV == CutLCSSA))
+            MaxUpdatePhi = Sel;
         }
       }
-      if (!MaxUpdatePhi)
-        for (BasicBlock* S : successors(BB))
-          Worklist.push_back(S);
     }
   }
+
   if (!MaxUpdatePhi)
     return std::nullopt;
-  errs() << "BFS done\n";
+  LLVM_DEBUG(dbgs() << "MaxUpdate found\n");
 
-  // 2.5: Outer latch GEP advances OuterPtrPhi by 1 struct element.
-  //        Element type is the vector struct (larger than a pair).
+  // 2.5: Outer latch GEP advances OuterPtrPhi by sizeof(subset element).
   GetElementPtrInst* OuterLatchGEP = nullptr;
-
   auto* SubsetElemAlloca = dyn_cast<AllocaInst>(Inner.SubsetAlloca);
-
   if (!SubsetElemAlloca)
     return std::nullopt;
   Type* OuterElemTy = SubsetElemAlloca->getAllocatedType();
@@ -551,9 +685,9 @@ static std::optional<MaxCutMatch> matchMaxCut(const ScoringLoopMatch& Inner,
   }
   if (!OuterLatchGEP)
     return std::nullopt;
-  errs() << "GEP Done\n";
+  LLVM_DEBUG(dbgs() << "GEP Done\n");
 
-  // 2.6: Identify the subset enumeration loops (future removal targets).
+  // 2.6: Identify subset enumeration loops (future removal targets).
   Value* SubsetsAlloca = stripToContainerSource(
       OuterPtrPhi->getIncomingValueForBlock(OuterPreheader));
 
@@ -572,7 +706,7 @@ static std::optional<MaxCutMatch> matchMaxCut(const ScoringLoopMatch& Inner,
     for (Loop* TopL : LI) {
       if (TopL == OuterL)
         continue;
-      errs() << *TopL << "\n";
+      LLVM_DEBUG(dbgs() << *TopL << "\n");
       if (!hasPushBackTo(TopL, SubsetsAlloca))
         continue;
       EnumOuter = TopL;
@@ -616,7 +750,10 @@ static void printMatch(const MaxCutMatch& M) {
   errs() << "    subset iter : " << *M.OuterPtrPhi << "\n";
   errs() << "    max accum   : " << *M.MaxPhi << "\n";
   errs() << "    cut lcssa   : " << *M.CutLCSSA << "\n";
-  errs() << "    max cmp     : " << *M.MaxCompare << "\n";
+  if (M.MaxCompare)
+    errs() << "    max cmp     : " << *M.MaxCompare << "\n";
+  else
+    errs() << "    max cmp     : (llvm.smax intrinsic)\n";
   errs() << "    max update  : " << *M.MaxUpdatePhi << "\n";
 
   errs() << "  -- Subset enumeration (future removal target) --\n";
@@ -647,29 +784,28 @@ namespace {
 struct MaxCutCppPass : PassInfoMixin<MaxCutCppPass> {
   PreservedAnalyses run(Function& F, FunctionAnalysisManager& AM) {
     LoopInfo& LI = AM.getResult<LoopAnalysis>(F);
-    errs() << "[MaxCut-CPP] scanning: " << F.getName() << "\n";
+    LLVM_DEBUG(dbgs() << "[MaxCut-CPP] scanning: " << F.getName() << "\n");
 
     SmallVector<MaxCutMatch, 2> Matches;
-
-    // Collect all loops across the entire nest, try each as a scoring loop.
     SmallVector<Loop*, 16> AllLoops;
     for (Loop* TopL : LI)
       collectAllLoops(TopL, AllLoops);
 
-    errs() << AllLoops.size() << "\n";
+    LLVM_DEBUG(dbgs() << AllLoops.size() << " loops\n");
     for (Loop* L : AllLoops) {
       auto Scoring = matchScoringLoop(L);
       if (!Scoring)
         continue;
+      LLVM_DEBUG(dbgs() << "Found Scoring Loop\n");
 
       auto Full = matchMaxCut(*Scoring, LI);
       if (!Full) {
-        errs() << "  [note] scoring loop in " << L->getHeader()->getName()
-               << " has no enclosing max-tracking loop\n";
+        LLVM_DEBUG(dbgs() << "  [note] scoring loop in "
+                          << L->getHeader()->getName()
+                          << " has no enclosing max-tracking loop\n");
         continue;
       }
 
-      // Deduplicate: one report per outer loop.
       bool Dup = false;
       for (auto& E : Matches)
         if (E.OuterL == Full->OuterL) {
@@ -681,7 +817,7 @@ struct MaxCutCppPass : PassInfoMixin<MaxCutCppPass> {
     }
 
     if (Matches.empty())
-      errs() << "  no MaxCut-CPP pattern found.\n";
+      LLVM_DEBUG(dbgs() << "  no MaxCut-CPP pattern found.\n");
     else
       for (auto& M : Matches)
         printMatch(M);
@@ -691,7 +827,6 @@ struct MaxCutCppPass : PassInfoMixin<MaxCutCppPass> {
 };
 }  // namespace
 
-// Exported so pass.cpp can call this from the shared llvmGetPassPluginInfo.
 void registerMaxCutCppPass(PassBuilder& PB) {
   PB.registerPipelineParsingCallback(
       [](StringRef Name, FunctionPassManager& FPM,
