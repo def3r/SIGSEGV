@@ -22,6 +22,8 @@ add_library(c2cudaq STATIC
     src/arith.cpp
     src/qaoa.cpp
     src/grover.cpp
+    src/shor.cpp
+    src/bridge.cpp
 )
 
 target_include_directories(c2cudaq PUBLIC include)

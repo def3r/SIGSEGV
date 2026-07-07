@@ -6,7 +6,7 @@
 #include <string>
 #include <utility>
 
-// ── QFT forward ───────────────────────────────────────────────────────────────
+// QFT forward
 struct factor_qft_fwd {
     __qpu__ void operator()(cudaq::qview<> q) {
         int M = q.size();
@@ -22,7 +22,7 @@ struct factor_qft_fwd {
     }
 };
 
-// ── QFT inverse ───────────────────────────────────────────────────────────────
+// QFT inverse
 struct factor_qft_inv {
     __qpu__ void operator()(cudaq::qview<> q) {
         int M = q.size();
@@ -36,7 +36,7 @@ struct factor_qft_inv {
     }
 };
 
-// ── Grover factoring kernel ───────────────────────────────────────────────────
+// Grover factoring kernel
 // Register layout (all allocated together so oracle and diffuser share qubits):
 //   work[0..sa-1]     = register a  (|a⟩, searched in superposition)
 //   work[sa..sa+sb-1] = register b  (|b⟩, searched in superposition)
@@ -67,7 +67,7 @@ struct factor_grover_kernel {
 
         for (int iter = 0; iter < iters; ++iter) {
 
-            // ── 1. Forward QFT multiply: acc = work_a * work_b ───────────────
+            // 1. Forward QFT multiply: acc = work_a * work_b
             // work[0..sa-1] = a bits (qubit i = bit i of a)
             // work[sa..sa+sb-1] = b bits (qubit sa+j = bit j of b)
             factor_qft_fwd{}(acc);
@@ -81,7 +81,7 @@ struct factor_grover_kernel {
                 }
             factor_qft_inv{}(acc);
 
-            // ── 2. Phase oracle: flip phase if acc == n ───────────────────────
+            // 2. Phase oracle: flip phase if acc == n
             // Flip bits where n has 0 so that n maps to the all-ones pattern.
             for (int k = 0; k < acc_size; ++k)
                 if (!((n >> k) & 1)) x(acc[k]);
@@ -91,7 +91,7 @@ struct factor_grover_kernel {
             for (int k = 0; k < acc_size; ++k)
                 if (!((n >> k) & 1)) x(acc[k]);
 
-            // ── 3. Inverse QFT multiply: restore acc to |0⟩ ──────────────────
+            // 3. Inverse QFT multiply: restore acc to |0⟩
             // (QFT · neg-phases · IQFT) is the inverse of (QFT · phases · IQFT)
             // because (ABC)† = C† B† A† and R1(θ)† = R1(-θ), IQFT† = QFT.
             factor_qft_fwd{}(acc);
@@ -105,7 +105,7 @@ struct factor_grover_kernel {
                 }
             factor_qft_inv{}(acc);
 
-            // ── 4. Grover diffuser on work ────────────────────────────────────
+            // 4. Grover diffuser on work
             // 2|s⟩⟨s| - I = H(2|0⟩⟨0| - I)H
             // 2|0⟩⟨0| - I = X⊗n · (H · MCX · H on last) · X⊗n
             for (int j = 0; j < nwork; ++j) h(work[j]);
@@ -122,7 +122,7 @@ struct factor_grover_kernel {
     }
 };
 
-// ── Decode: split work bitstring into (a, b) ─────────────────────────────────
+// Decode: split work bitstring into (a, b)
 // CUDA-Q most_probable() returns bits with qubit 0 first (LSB first).
 // work = [a_bits | b_bits], so string[0..sa-1] = a, string[sa..sa+sb-1] = b.
 static std::pair<int64_t, int64_t>
@@ -135,7 +135,7 @@ decode_factors(const std::string& bits, int sa, int sb) {
     return {half(0, sa), half(sa, sb)};
 }
 
-// ── Public API ────────────────────────────────────────────────────────────────
+// Public API
 std::pair<int64_t, int64_t> c2q_factor(int64_t n) {
     if (n < 4)
         throw std::invalid_argument("c2q_factor: n must be >= 4");

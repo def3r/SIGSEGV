@@ -4,7 +4,7 @@
 int main() {
   std::cout << "=== Quantum Factorization Examples ===\n\n";
 
-  // ── c2q_factor ────────────────────────────────────────────────────────────
+  // c2q_factor
   // Uses the QFT multiplier to quantum-verify each candidate factor pair.
   // Iterates classically but validates each pair on the quantum circuit.
   for (int64_t n : {15, 21, 35, 12, 77}) {  // wat?? even 12 works!

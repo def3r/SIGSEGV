@@ -30,7 +30,7 @@ static void check_not_neg(const char* name, int got) {
 }
 
 int main() {
-  // ── MaxCut — 5-node graph from maxcut.py ──────────────────────────────────
+  // MaxCut — 5-node graph from maxcut.py
   // Known max cut = 5, valid partitions include "10101", "01010", etc.
   Graph g5{5,
            {{0, 1, 1}, {1, 2, 1}, {2, 3, 1}, {3, 0, 1}, {2, 4, 1}, {3, 4, 1}}};
@@ -47,7 +47,7 @@ int main() {
   check_int("maxcut VQE  cut_value", mc_vqe.objective, 3,
             5);  // VQE may be looser
 
-  // ── MIS — path graph P4: 0-1-2-3, optimum MIS = {0,2} or {0,3} or {1,3},
+  // MIS — path graph P4: 0-1-2-3, optimum MIS = {0,2} or {0,3} or {1,3},
   // size=2
   Graph path4{4, {{0, 1, 1}, {1, 2, 1}, {2, 3, 1}}};
   auto mis = c2q_mis(path4);
@@ -62,7 +62,7 @@ int main() {
             << " size=" << mis_vqe.objective << "\n";
   check_not_neg("MIS VQE valid", mis_vqe.objective);
 
-  // ── Vertex Cover — star graph K1,3: center=0, leaves=1,2,3
+  // Vertex Cover — star graph K1,3: center=0, leaves=1,2,3
   // Minimum VC = {0}, size=1
   Graph star{4, {{0, 1, 1}, {0, 2, 1}, {0, 3, 1}}};
   auto vc = c2q_vc(star);
@@ -70,7 +70,7 @@ int main() {
             << " size=" << vc.objective << "\n";
   check_not_neg("VC QAOA valid", vc.objective);
 
-  // ── Clique — K4 (complete graph on 4 nodes), largest clique = 4
+  // Clique — K4 (complete graph on 4 nodes), largest clique = 4
   Graph k4{4,
            {{0, 1, 1}, {0, 2, 1}, {0, 3, 1}, {1, 2, 1}, {1, 3, 1}, {2, 3, 1}}};
   auto cl = c2q_clique(k4);
@@ -78,7 +78,7 @@ int main() {
             << " size=" << cl.objective << "\n";
   check_not_neg("Clique QAOA valid", cl.objective);
 
-  // ── KColor — triangle K3, needs 3 colors
+  // KColor — triangle K3, needs 3 colors
   Graph k3{3, {{0, 1, 1}, {1, 2, 1}, {0, 2, 1}}};
   auto kc = c2q_kcolor(k3, /*k=*/3);
   std::cout << "[INFO] KColor QAOA (k=3) partition=" << kc.partition
@@ -87,7 +87,7 @@ int main() {
   std::cout << (kc.objective == 0 ? "[PASS]" : "[INFO]")
             << " kcolor objective=" << kc.objective << "\n";
 
-  // ── TSP — 3-city complete weighted graph
+  // TSP — 3-city complete weighted graph
   Graph tsp3{3, {{0, 1, 2}, {1, 2, 3}, {0, 2, 4}}};
   auto tsp = c2q_tsp(tsp3);
   std::cout << "[INFO] TSP QAOA partition=" << tsp.partition

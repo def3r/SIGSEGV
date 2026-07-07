@@ -30,7 +30,7 @@ static BenchRow bench(int64_t n) {
     BenchRow row{};
     row.n = n;
 
-    // ── Grover ────────────────────────────────────────────────────────────────
+    // Grover
     auto t0 = Clock::now();
     try {
         auto [p, q] = c2q_factor(n);
@@ -43,7 +43,7 @@ static BenchRow bench(int64_t n) {
     }
     row.grover_ms = Ms(Clock::now() - t0).count();
 
-    // ── Shor ──────────────────────────────────────────────────────────────────
+    // Shor
     t0 = Clock::now();
     try {
         auto [p, q] = c2q_factor_shor(n);

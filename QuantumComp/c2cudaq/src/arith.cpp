@@ -5,7 +5,7 @@
 #include <stdexcept>
 #include <string>
 
-// ── QFT helpers (same as libqmul) ────────────────────────────────────────────
+// QFT helpers (same as libqmul)
 struct qft_fwd {
   void operator()(cudaq::qview<> q) __qpu__ {
     int M = q.size();
@@ -21,7 +21,7 @@ struct qft_fwd {
   }
 };
 
-// Inverse QFT — no cudaq::adjoint (MLIR cloneReversedLoop crash on variable
+// Inverse QFT - no cudaq::adjoint (MLIR cloneReversedLoop crash on variable
 // bounds)
 struct qft_inv {
   __qpu__ void operator()(cudaq::qview<> q) {
@@ -36,8 +36,7 @@ struct qft_inv {
   }
 };
 
-// ── Ripple-carry ADD
-// ────────────────────────────────────────────────────────── Register layout:
+// Ripple-carry ADD Register layout:
 // reg_a[0..n-1], reg_b[0..n-1], carry[0..n] (n+1 qubits). Result lands in
 // carry[0..n].  carry[n] is the overflow/sign bit.
 struct add_kernel {
@@ -70,8 +69,7 @@ struct add_kernel {
   }
 };
 
-// ── QFT multiplier
-// ────────────────────────────────────────────────────────────
+// QFT multiplier
 struct mul_kernel {
   __qpu__ void operator()(int a, int b, int sa, int sb) {
     cudaq::qvector ra(sa), rb(sb);
@@ -101,8 +99,7 @@ struct mul_kernel {
   }
 };
 
-// ── Decode helpers
-// ────────────────────────────────────────────────────────────
+// Decode helpers
 static int64_t bits_to_int(const std::string& bits) {
   std::string rev = bits;
   std::reverse(rev.begin(), rev.end());
@@ -118,8 +115,7 @@ static int64_t decode_carry(const std::string& bits, int n) {
   return carry_out ? v : v - (1LL << n);
 }
 
-// ── Public API
-// ────────────────────────────────────────────────────────────────
+// Public API
 static int bit_length(int64_t x) {
   if (x <= 0)
     x = -x;

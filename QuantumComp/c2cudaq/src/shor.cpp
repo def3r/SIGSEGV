@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-// ── Classical helpers ─────────────────────────────────────────────────────────
+// Classical helpers
 
 static int64_t shor_modpow(int64_t base, int64_t exp, int64_t mod) {
     int64_t r = 1;
@@ -43,7 +43,7 @@ static int64_t best_convergent_denom(int64_t num, int64_t den, int64_t max_q) {
     return q1;
 }
 
-// ── Builder API circuit primitives ────────────────────────────────────────────
+// Builder API circuit primitives
 // All functions below add gates to the kernel builder at C++ compile time.
 // They are classical C++ functions that emit MLIR gate operations into the
 // kernel; the resulting circuit runs on the QPU.
@@ -157,7 +157,7 @@ static void apply_iqft_builder(Kernel& k, cudaq::QuakeValue reg, int t) {
     }
 }
 
-// ── QPE circuit (builder API) ─────────────────────────────────────────────────
+// QPE circuit (builder API)
 // Qubit layout:
 //   counting[0..t-1]   : QPE counting register (H-initialised)
 //   state[0..n-1]      : order-finding state register (init to |1⟩)
@@ -201,7 +201,7 @@ static cudaq::sample_result run_shor_qpe(int64_t N, int64_t a,
     return cudaq::sample(kernel);
 }
 
-// ── Public API ────────────────────────────────────────────────────────────────
+// Public API
 std::pair<int64_t, int64_t> c2q_factor_shor(int64_t n) {
     if (n < 4)
         throw std::invalid_argument("c2q_factor_shor: n must be >= 4");

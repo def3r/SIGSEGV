@@ -3,6 +3,7 @@
 #include <cudaq.h>
 #include <cudaq/optimizers.h>
 #include <cmath>
+#include <limits>
 #include <random>
 #include <stdexcept>
 #include <string>
@@ -10,7 +11,7 @@
 
 using namespace c2cudaq;
 
-// ── Generalized QAOA kernel ───────────────────────────────────────────────────
+// Generalized QAOA kernel
 // Cost layer: ZZ terms → CNOT+RZ+CNOT; Z terms → RZ.
 // Mixer:      RX on all qubits.
 // thetas: [gamma_0..gamma_{p-1}, beta_0..beta_{p-1}]
@@ -39,8 +40,8 @@ struct qaoa_general {
     }
 };
 
-// ── Hardware-efficient VQE ansatz (RY + linear CZ) ───────────────────────────
-// thetas: n*(reps+1) angles — one RY per qubit per layer.
+// Hardware-efficient VQE ansatz (RY + linear CZ)
+// thetas: n*(reps+1) angles - one RY per qubit per layer.
 struct vqe_ansatz {
     __qpu__ void operator()(int n, int reps, std::vector<double> thetas) {
         cudaq::qvector qreg(n);
@@ -54,7 +55,7 @@ struct vqe_ansatz {
     }
 };
 
-// ── Build cudaq::spin_op from IsingTerms ──────────────────────────────────────
+// Build cudaq::spin_op from IsingTerms
 static cudaq::spin_op make_hamiltonian(const IsingTerms& ising) {
     cudaq::spin_op H;
     bool first = true;
@@ -70,7 +71,7 @@ static cudaq::spin_op make_hamiltonian(const IsingTerms& ising) {
     return H;
 }
 
-// ── QAOA optimization loop ────────────────────────────────────────────────────
+// QAOA optimization loop
 static std::pair<std::string, double>
 run_qaoa(int n_qubits, int layers, const IsingTerms& ising, int seed) {
     auto H    = make_hamiltonian(ising);
@@ -82,15 +83,30 @@ run_qaoa(int n_qubits, int layers, const IsingTerms& ising, int seed) {
 
     cudaq::optimizers::cobyla opt;
     opt.initial_parameters = init;
+    // Stop well before NLOpt collapses the simplex to floating-point noise.
+    // Quantum shot noise is ~1e-2, so 1e-3 tolerance is already over-converged.
+    opt.f_tol    = 1e-10;
+    opt.max_eval = 500;
 
-    auto [opt_val, opt_par] = opt.optimize(
-        npar,
-        [&](std::vector<double> par, std::vector<double>&) -> double {
-            return cudaq::observe(qaoa_general{}, H,
-                n_qubits, layers,
-                ising.zz_i, ising.zz_j, ising.zz_c,
-                ising.z_i,  ising.z_c,  par).expectation();
-        });
+    double best_val = std::numeric_limits<double>::max();
+    std::vector<double> best_par = init;
+
+    double opt_val; std::vector<double> opt_par;
+    try {
+        auto [v, p] = opt.optimize(
+            npar,
+            [&](std::vector<double> par, std::vector<double>&) -> double {
+                double e = cudaq::observe(qaoa_general{}, H,
+                    n_qubits, layers,
+                    ising.zz_i, ising.zz_j, ising.zz_c,
+                    ising.z_i,  ising.z_c,  par).expectation();
+                if (e < best_val) { best_val = e; best_par = par; }
+                return e;
+            });
+        opt_val = v; opt_par = p;
+    } catch (...) {
+        opt_val = best_val; opt_par = best_par;
+    }
 
     auto counts = cudaq::sample(qaoa_general{},
         n_qubits, layers,
@@ -99,7 +115,7 @@ run_qaoa(int n_qubits, int layers, const IsingTerms& ising, int seed) {
     return {counts.most_probable(), opt_val};
 }
 
-// ── VQE optimization loop ─────────────────────────────────────────────────────
+// VQE optimization loop
 static std::pair<std::string, double>
 run_vqe(int n_qubits, int reps, const IsingTerms& ising, int seed) {
     auto H    = make_hamiltonian(ising);
@@ -111,18 +127,31 @@ run_vqe(int n_qubits, int reps, const IsingTerms& ising, int seed) {
 
     cudaq::optimizers::cobyla opt;
     opt.initial_parameters = init;
+    opt.f_tol    = 1e-3;
+    opt.max_eval = 500;
 
-    auto [opt_val, opt_par] = opt.optimize(
-        npar,
-        [&](std::vector<double> par, std::vector<double>&) -> double {
-            return cudaq::observe(vqe_ansatz{}, H, n_qubits, reps, par).expectation();
-        });
+    double best_val = std::numeric_limits<double>::max();
+    std::vector<double> best_par = init;
+
+    double opt_val; std::vector<double> opt_par;
+    try {
+        auto [v, p] = opt.optimize(
+            npar,
+            [&](std::vector<double> par, std::vector<double>&) -> double {
+                double e = cudaq::observe(vqe_ansatz{}, H, n_qubits, reps, par).expectation();
+                if (e < best_val) { best_val = e; best_par = par; }
+                return e;
+            });
+        opt_val = v; opt_par = p;
+    } catch (...) {
+        opt_val = best_val; opt_par = best_par;
+    }
 
     auto counts = cudaq::sample(vqe_ansatz{}, n_qubits, reps, opt_par);
     return {counts.most_probable(), opt_val};
 }
 
-// ── Generic dispatch helpers ──────────────────────────────────────────────────
+// Generic dispatch helpers
 static GraphResult solve_qaoa(const Graph& g, const std::vector<double>& Q,
                                int n_qubits, int layers, int seed,
                                int (*decode)(const std::string&, const Graph&)) {
@@ -141,7 +170,7 @@ static GraphResult solve_vqe(const Graph& g, const std::vector<double>& Q,
     return {part, decode(part, g), energy};
 }
 
-// ── MaxCut ────────────────────────────────────────────────────────────────────
+// MaxCut
 GraphResult c2q_maxcut(const Graph& g, int layers, int seed) {
     return solve_qaoa(g, qubo_maxcut(g), g.num_nodes, layers, seed, decode_maxcut);
 }
@@ -149,7 +178,7 @@ GraphResult c2q_maxcut_vqe(const Graph& g, int reps, int seed) {
     return solve_vqe(g, qubo_maxcut(g), g.num_nodes, reps, seed, decode_maxcut);
 }
 
-// ── MIS ───────────────────────────────────────────────────────────────────────
+// MIS
 GraphResult c2q_mis(const Graph& g, int layers, int seed) {
     return solve_qaoa(g, qubo_mis(g), g.num_nodes, layers, seed, decode_mis);
 }
@@ -157,7 +186,7 @@ GraphResult c2q_mis_vqe(const Graph& g, int reps, int seed) {
     return solve_vqe(g, qubo_mis(g), g.num_nodes, reps, seed, decode_mis);
 }
 
-// ── Vertex Cover ──────────────────────────────────────────────────────────────
+// Vertex Cover
 GraphResult c2q_vc(const Graph& g, int layers, int seed) {
     return solve_qaoa(g, qubo_vc(g), g.num_nodes, layers, seed, decode_vc);
 }
@@ -165,7 +194,7 @@ GraphResult c2q_vc_vqe(const Graph& g, int reps, int seed) {
     return solve_vqe(g, qubo_vc(g), g.num_nodes, reps, seed, decode_vc);
 }
 
-// ── Clique ────────────────────────────────────────────────────────────────────
+// Clique
 GraphResult c2q_clique(const Graph& g, int k, int layers, int seed) {
     return solve_qaoa(g, qubo_clique(g, k), g.num_nodes, layers, seed, decode_clique);
 }
@@ -173,7 +202,7 @@ GraphResult c2q_clique_vqe(const Graph& g, int k, int reps, int seed) {
     return solve_vqe(g, qubo_clique(g, k), g.num_nodes, reps, seed, decode_clique);
 }
 
-// ── KColor ────────────────────────────────────────────────────────────────────
+// KColor
 // Decode wrapper that captures k
 static int s_kcolor_k = 3;
 static const Graph* s_kcolor_g = nullptr;
@@ -198,7 +227,7 @@ GraphResult c2q_kcolor_vqe(const Graph& g, int k, int reps, int seed) {
     return {part, decode_kcolor(part, g, k), energy};
 }
 
-// ── TSP ───────────────────────────────────────────────────────────────────────
+// TSP
 GraphResult c2q_tsp(const Graph& g, int layers, int seed) {
     int n_qubits = g.num_nodes * g.num_nodes;
     check_qubit_limit(n_qubits, "TSP QAOA");
