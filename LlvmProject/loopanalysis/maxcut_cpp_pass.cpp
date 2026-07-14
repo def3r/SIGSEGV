@@ -6,6 +6,8 @@
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Demangle/Demangle.h"
 #include "llvm/IR/Analysis.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/PassManager.h"
@@ -52,7 +54,7 @@ struct MaxCutMatch {
   Value* EdgesContainer;
 };
 
-// ---- Helpers ---------------------------------------------------------------
+// Helpers
 
 // Trace through call chains and bitcasts to reach an AllocaInst or Argument.
 static Value* stripToContainerSource(Value* V) {
@@ -97,9 +99,28 @@ static CallBase* traceGetThroughCast(Value* Arg) {
   return nullptr;
 }
 
+// Strip libc++ inline-namespace prefix (std::__1::) and ABI tags ([abi:...])
+// so that checks written for libstdc++ names also match libc++ IR.
+static std::string normalizeDemangled(std::string d) {
+  // Remove ABI tags like [abi:v160006]
+  for (auto pos = d.find("[abi:"); pos != std::string::npos;
+       pos = d.find("[abi:")) {
+    auto end = d.find(']', pos);
+    if (end == std::string::npos)
+      break;
+    d.erase(pos, end - pos + 1);
+  }
+  // Collapse std::__1:: → std::
+  const std::string needle = "std::__1::";
+  for (auto pos = d.find(needle); pos != std::string::npos;
+       pos = d.find(needle))
+    d.erase(pos + 5, 5);  // remove "__1::" (5 chars)
+  return d;
+}
+
 static bool demangleContains(const CallBase* CB, StringRef Sub) {
   const Function* F = CB->getCalledFunction();
-  std::string demangled = demangle(F->getName());
+  std::string demangled = normalizeDemangled(demangle(F->getName()));
   LLVM_DEBUG(dbgs() << "Demangled: " << demangled << "\n");
   return StringRef(demangled).contains(Sub);
 }
@@ -218,11 +239,10 @@ static std::optional<ScoringLoopMatch> matchScoringLoop(Loop* L) {
       if (auto* CB = dyn_cast<CallBase>(&I)) {
         if (Function* Callee = CB->getCalledFunction()) {
           StringRef mangled = Callee->getName();
-          bool isMembership =
-              (mangled.find("find") != std::string::npos &&
-               demangleContains(CB, "std::find<")) ||
-              (mangled.find("count") != std::string::npos &&
-               demangleContains(CB, "std::count<"));
+          bool isMembership = (mangled.find("find") != std::string::npos &&
+                               demangleContains(CB, "std::find<")) ||
+                              (mangled.find("count") != std::string::npos &&
+                               demangleContains(CB, "std::count<"));
           if (isMembership)
             Finds.push_back(CB);
         }
@@ -271,7 +291,7 @@ static std::optional<ScoringLoopMatch> matchScoringLoop(Loop* L) {
     const Function* F = CB->getCalledFunction();
     if (!F)
       return false;
-    std::string D = demangle(F->getName());
+    std::string D = normalizeDemangled(demangle(F->getName()));
     std::string Needle = "std::get<" + std::to_string(N);
     return StringRef(D).contains(Needle);
   };
@@ -478,6 +498,57 @@ static std::optional<ScoringLoopMatch> matchScoringLoop(Loop* L) {
   if (!LatchGEP)
     return std::nullopt;
 
+  // 1.10: Inner-loop side-effect check.
+  // matchScoringLoop() validates the inner loop's structural shape but does
+  // not scan for calls beyond the recognised ones.  checkSideEffects() (gate
+  // 2) skips ALL inner sub-loop blocks, so any extra side-effecting call in
+  // the inner loop would otherwise be silently dropped when the loops are
+  // replaced with @maxcut_impl.  Walk the inner blocks here and reject any
+  // call that writes to memory and is not one of:
+  //   - FindU / FindV  (the two membership tests)
+  //   - GetU  / GetV   (the two std::get<> accessors)
+  //   - any std::vector helper (begin/end/size/…, all read-only in practice)
+  for (BasicBlock* BB : L->blocks()) {
+    if (BB == Header || SubLoopBlocks.count(BB))
+      continue;
+    for (Instruction& I : *BB) {
+      auto* CB = dyn_cast<CallBase>(&I);
+      if (!CB)
+        continue;
+      if (CB->onlyReadsMemory() || CB->doesNotAccessMemory())
+        continue;
+      if (CB == FindU || CB == FindV || CB == GetU || CB == GetV)
+        continue;
+      // memset/memcpy/memmove to a local alloca are value-copy equivalents:
+      // e.g. the compiler copies pair<long long,long long> (too large for
+      // registers) into a local slot via llvm.memcpy for the auto [a,b]
+      // structured binding.  Mirror the same exception used in checkSideEffects.
+      if (auto* II = dyn_cast<IntrinsicInst>(CB)) {
+        auto IID = II->getIntrinsicID();
+        if (IID == Intrinsic::memset || IID == Intrinsic::memcpy ||
+            IID == Intrinsic::memmove) {
+          Value* Dest = II->getArgOperand(0)->stripPointerCasts();
+          if (isa<AllocaInst>(Dest))
+            continue;
+        }
+      }
+      Function* Callee = CB->getCalledFunction();
+      if (Callee) {
+        std::string D = normalizeDemangled(demangle(Callee->getName()));
+        StringRef DS(D);
+        // Allow container operations on local data: vector (push_back, etc.),
+        // pair constructors, and allocator calls they invoke.
+        // Deliberately narrow: std::basic_ostream / cout are NOT in this list.
+        if (DS.contains("std::vector") || DS.contains("std::pair") ||
+            DS.contains("std::allocator"))
+          continue;
+      }
+      LLVM_DEBUG(dbgs() << "[inner-check] unrecognised side-effecting call "
+                           "in scoring loop: " << I << "\n");
+      return std::nullopt;
+    }
+  }
+
   return ScoringLoopMatch{L,     PtrPhi,       AccPhi, EdgesEnd, FindU,
                           FindV, SubsetAlloca, CutAdd, IncWeight};
 }
@@ -510,7 +581,8 @@ static std::optional<MaxCutMatch> matchMaxCut(const ScoringLoopMatch& Inner,
       auto* Init =
           dyn_cast<ConstantInt>(PN.getIncomingValueForBlock(OuterPreheader));
       // TODO: generalize to non-zero init (e.g. best = -1 as sentinel);
-      // currently only isZero() is accepted, so fn_nonzero_init is a false negative.
+      // currently only isZero() is accepted, so fn_nonzero_init is a false
+      // negative.
       if (!Init || !Init->isZero())
         return std::nullopt;
       if (MaxPhi)
@@ -731,6 +803,217 @@ static std::optional<MaxCutMatch> matchMaxCut(const ScoringLoopMatch& Inner,
                      EnumOuter, EnumInner,  EdgesContainer};
 }
 
+// Transformation
+
+// Gate 1: The only register live-outs from the outer loop should be values
+// directly related to MaxPhi. Any unexpected LCSSA phi means a second
+// quantity is being accumulated and we cannot safely replace the loops.
+static bool checkLiveOuts(const MaxCutMatch& M) {
+  SmallVector<BasicBlock*, 4> ExitBBs;
+  M.OuterL->getExitBlocks(ExitBBs);
+  for (BasicBlock* ExitBB : ExitBBs) {
+    for (PHINode& PN : ExitBB->phis()) {
+      for (unsigned i = 0; i < PN.getNumIncomingValues(); ++i) {
+        if (!M.OuterL->contains(PN.getIncomingBlock(i)))
+          continue;
+        Value* V = PN.getIncomingValue(i);
+        if (V == M.MaxPhi || V == M.MaxUpdatePhi || V == M.CutLCSSA)
+          continue;
+        LLVM_DEBUG(dbgs() << "[gate1] unexpected live-out phi: " << PN << "\n");
+        return false;
+      }
+    }
+  }
+  // Also check direct (non-LCSSA) out-of-loop uses of MaxPhi.
+  // for (User* U : M.MaxPhi->users()) {
+  //   auto* UI = dyn_cast<Instruction>(U);
+  //   if (!UI || M.OuterL->contains(UI->getParent()))
+  //     continue;
+  //   bool InExit = false;
+  //   for (BasicBlock* E : ExitBBs)
+  //     if (UI->getParent() == E) {
+  //       InExit = true;
+  //       break;
+  //     }
+  //   if (!InExit) {
+  //     LLVM_DEBUG(dbgs() << "[gate1] MaxPhi used outside exit: " << *UI << "\n");
+  //     return false;
+  //   }
+  // }
+  return true;
+}
+
+// Gate 2: Scan outer loop non-inner blocks for side-effecting calls.
+// Vector operations are allowed. A vector::operator= whose `this` pointer
+// traces to an external alloca with the same type as the subset container
+// is identified as the best_S assignment and returned via OutBestSAlloca.
+// Any other unrecognised side-effecting call causes rejection.
+static bool checkSideEffects(const MaxCutMatch& M, Value*& OutBestSAlloca) {
+  OutBestSAlloca = nullptr;
+  SmallPtrSet<BasicBlock*, 32> InnerBlocks;
+  for (Loop* Sub : M.OuterL->getSubLoops())
+    for (BasicBlock* BB : Sub->blocks())
+      InnerBlocks.insert(BB);
+
+  auto* SubsetAI = dyn_cast_or_null<AllocaInst>(M.Inner.SubsetAlloca);
+
+  for (BasicBlock* BB : M.OuterL->blocks()) {
+    if (InnerBlocks.count(BB))
+      continue;
+    for (Instruction& I : *BB) {
+      auto* CB = dyn_cast<CallBase>(&I);
+      // InvokeInst is both a CallBase and a terminator; process it as a call.
+      if (!CB) {
+        if (I.isTerminator())
+          continue;
+        continue;
+      }
+      if (CB->onlyReadsMemory() || CB->doesNotAccessMemory())
+        continue;
+      if (auto* II = dyn_cast<IntrinsicInst>(CB)) {
+        auto IID = II->getIntrinsicID();
+        if (IID == Intrinsic::smax)
+          continue;
+        // memset/memcpy/memmove are store equivalents — instcombine folds
+        // vector default-init stores into memset, so without this they'd be
+        // rejected even though plain stores are always skipped.
+        // Only allow if destination is a local alloca (not external memory).
+        if (IID == Intrinsic::memset ||
+            IID == Intrinsic::memcpy ||
+            IID == Intrinsic::memmove) {
+          Value* Dest = II->getArgOperand(0)->stripPointerCasts();
+          if (isa<AllocaInst>(Dest))
+            continue;
+          LLVM_DEBUG(dbgs() << "[gate2] mem-intrinsic to non-local dest: "
+                            << I << "\n");
+        }
+      }
+      Function* Callee = CB->getCalledFunction();
+      if (!Callee) {
+        dbgs() << "[gate2] indirect call: " << I << "\n";
+        return false;
+      }
+      std::string D = normalizeDemangled(demangle(Callee->getName()));
+      StringRef DS(D);
+      if (DS.contains("std::vector")) {
+        // Check for best_S: operator= on an external alloca with subset's type.
+        if ((DS.contains("operator=") || DS.contains("_M_assign")) &&
+            CB->arg_size() >= 1) {
+          Value* This = stripToContainerSource(CB->getArgOperand(0));
+          if (auto* AI = dyn_cast_or_null<AllocaInst>(This)) {
+            if (!M.OuterL->contains(AI->getParent()) && SubsetAI &&
+                AI->getAllocatedType() == SubsetAI->getAllocatedType()) {
+              OutBestSAlloca = AI;
+            }
+          }
+        }
+        continue;  // all std::vector operations are otherwise OK
+      }
+      dbgs() << "[gate2] unrecognised side-effecting call: " << I << "\n";
+      return false;
+    }
+  }
+  return true;
+}
+
+// Replacement
+
+// Replace the matched outer+inner loops with a call to @maxcut_impl.
+// Signature: i32 @maxcut_impl(ptr subsets, ptr edges [, ptr best_S])
+// The outer loop's preheader is redirected to the loop's exit block.
+// All loop blocks (including EH cleanup) are erased; any unreachable EH
+// blocks left outside are cleaned up by later DCE passes.
+static bool performReplacement(const MaxCutMatch& M, Value* BestSAlloca) {
+  BasicBlock* Preheader = M.OuterL->getLoopPreheader();
+  BasicBlock* ExitBB = getNormalExitBlock(M.OuterL);
+  if (!ExitBB) {
+    LLVM_DEBUG(dbgs() << "  [skip] outer loop has multiple normal exits\n");
+    return false;
+  }
+
+  Module* Mod = Preheader->getModule();
+  LLVMContext& Ctx = Mod->getContext();
+  PointerType* PtrTy = PointerType::get(Ctx, 0);
+
+  // Always emit the 3-arg form so the bridge function has a single stable
+  // signature: maxcut_impl(ptr subsets, ptr edges, ptr best_S).
+  // When best_S is absent the third argument is a null pointer.
+  FunctionType* FTy =
+      FunctionType::get(Type::getInt32Ty(Ctx), {PtrTy, PtrTy, PtrTy}, false);
+  auto* ImplFn =
+      cast<Function>(Mod->getOrInsertFunction("maxcut_impl", FTy).getCallee());
+  ImplFn->setDoesNotThrow();
+
+  // Determine the container arguments.
+  Value* SubsetsArg = M.SubsetsAlloca;
+  if (!SubsetsArg)
+    SubsetsArg = M.OuterPtrPhi->getIncomingValueForBlock(Preheader);
+  Value* EdgesArg = M.EdgesContainer;
+  if (!EdgesArg) {
+    if (BasicBlock* IP = M.Inner.L->getLoopPreheader())
+      EdgesArg = M.Inner.PtrPhi->getIncomingValueForBlock(IP);
+  }
+  if (!SubsetsArg || !EdgesArg) {
+    LLVM_DEBUG(dbgs() << "  [skip] cannot determine call arguments\n");
+    return false;
+  }
+
+  Value* BestSArg = BestSAlloca ? BestSAlloca : ConstantPointerNull::get(PtrTy);
+
+  IRBuilder<> Builder(Preheader->getTerminator());
+  CallInst* Result = Builder.CreateCall(
+      ImplFn, {SubsetsArg, EdgesArg, BestSArg}, "maxcut_result");
+
+  // Replace all out-of-loop uses of MaxPhi (direct or via LCSSA phi) with
+  // the call result.
+  {
+    SmallVector<Use*, 8> ToFix;
+    for (Use& U : M.MaxPhi->uses()) {
+      auto* UI = dyn_cast<Instruction>(U.getUser());
+      if (UI && !M.OuterL->contains(UI->getParent()))
+        ToFix.push_back(&U);
+    }
+    for (Use* U : ToFix)
+      U->set(Result);
+  }
+  // Fix any LCSSA-style exit phis.
+  for (PHINode& PN : ExitBB->phis()) {
+    for (unsigned i = 0; i < PN.getNumIncomingValues(); ++i) {
+      if (!M.OuterL->contains(PN.getIncomingBlock(i)))
+        continue;
+      Value* V = PN.getIncomingValue(i);
+      if (V == M.MaxPhi || V == M.MaxUpdatePhi || V == M.CutLCSSA) {
+        PN.replaceAllUsesWith(Result);
+        break;
+      }
+    }
+  }
+
+  // Collect all loop blocks before touching the CFG.
+  SmallVector<BasicBlock*, 32> LoopBlocks(M.OuterL->blocks());
+
+  // Remove each loop block from the phi nodes of its non-loop successors.
+  for (BasicBlock* BB : LoopBlocks) {
+    for (BasicBlock* Succ : successors(BB)) {
+      if (!M.OuterL->contains(Succ))
+        Succ->removePredecessor(BB, /*KeepOneInputPHIs=*/false);
+    }
+  }
+
+  // Redirect the preheader directly to the exit block.
+  Preheader->getTerminator()->eraseFromParent();
+  UncondBrInst::Create(ExitBB, Preheader);
+
+  // Erase all loop blocks.
+  for (BasicBlock* BB : LoopBlocks)
+    BB->dropAllReferences();
+  for (BasicBlock* BB : LoopBlocks)
+    BB->eraseFromParent();
+
+  errs() << "  *** replaced MaxCut loops with call to @maxcut_impl\n\n";
+  return true;
+}
+
 // Reporting
 static void printMatch(const MaxCutMatch& M) {
   errs() << "\n  *** MaxCut-CPP pattern matched ***\n";
@@ -816,13 +1099,30 @@ struct MaxCutCppPass : PassInfoMixin<MaxCutCppPass> {
         Matches.push_back(*Full);
     }
 
-    if (Matches.empty())
+    if (Matches.empty()) {
       LLVM_DEBUG(dbgs() << "  no MaxCut-CPP pattern found.\n");
-    else
-      for (auto& M : Matches)
-        printMatch(M);
+      return PreservedAnalyses::all();
+    }
 
-    return PreservedAnalyses::all();
+    bool Changed = false;
+    for (auto& M : Matches) {
+      printMatch(M);
+      Value* BestSAlloca = nullptr;
+      if (!checkLiveOuts(M)) {
+        errs() << "  [skip replacement] unexpected register live-outs\n";
+        continue;
+      }
+      if (!checkSideEffects(M, BestSAlloca)) {
+        errs() << "  [skip replacement] unaccounted side effects\n";
+        continue;
+      }
+      if (performReplacement(M, BestSAlloca)) {
+        Changed = true;
+        break;  // LoopInfo is stale after modification
+      }
+    }
+
+    return Changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
   }
 };
 }  // namespace

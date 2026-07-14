@@ -36,3 +36,6 @@ int compute_hyper_cut(vector<int> nodes, vector<Edge3> hedges) {
   }
   return best;
 }
+
+// --- lit check directives (read by update.py) ---
+// CHECK-NOT: maxcut_impl

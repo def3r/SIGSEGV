@@ -37,3 +37,7 @@ int compute_maxcut_cnt(vector<int> nodes, vector<pair<int, int>> edges) {
   }
   return best;
 }
+
+// --- lit check directives (read by update.py) ---
+// CHECK: replaced MaxCut loops with call to @maxcut_impl
+// CHECK: call i32 @maxcut_impl(ptr

@@ -32,3 +32,6 @@ int compute_bip_cut(vector<int> left, vector<int> right,
   }
   return best;
 }
+
+// --- lit check directives (read by update.py) ---
+// CHECK-NOT: maxcut_impl

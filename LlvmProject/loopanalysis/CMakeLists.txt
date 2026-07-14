@@ -17,3 +17,38 @@ add_llvm_pass_plugin(MinPass
   pass.cpp
   maxcut_cpp_pass.cpp
 )
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+enable_testing()
+find_package(Python3 COMPONENTS Interpreter)
+
+# Locate lit. Preference order:
+#   1. -DLLVM_EXTERNAL_LIT=<path>   user override, persisted in CMakeCache
+#   2. llvm-lit in the LLVM install's bin dir (LLVM_TOOLS_BINARY_DIR)
+#   3. llvm-lit in a sibling build/ directory — common dev layout where
+#      <prefix>/install/ and <prefix>/build/ sit next to each other
+if(NOT LLVM_EXTERNAL_LIT)
+  get_filename_component(_sibling_build_bin
+    "${LLVM_TOOLS_BINARY_DIR}/../../build/bin" ABSOLUTE)
+  find_program(LLVM_EXTERNAL_LIT
+    NAMES llvm-lit lit.py lit
+    HINTS
+      "${LLVM_TOOLS_BINARY_DIR}"
+      "${_sibling_build_bin}"
+    DOC "Path to the lit test runner (llvm-lit binary or lit.py script)"
+  )
+  unset(_sibling_build_bin)
+endif()
+
+if(Python3_EXECUTABLE AND LLVM_EXTERNAL_LIT)
+  add_lit_testsuite(check-maxcut "Running maxcut-cpp-pass lit tests"
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/maxcut
+    DEPENDS MinPass
+  )
+  message(STATUS "check-maxcut target enabled (lit: ${LLVM_EXTERNAL_LIT})")
+elseif(NOT Python3_EXECUTABLE)
+  message(STATUS "check-maxcut disabled — Python 3 interpreter not found")
+else()
+  message(STATUS "check-maxcut disabled — "
+    "pass -DLLVM_EXTERNAL_LIT=/path/to/llvm-lit to enable")
+endif()

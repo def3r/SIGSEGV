@@ -42,3 +42,6 @@ int compute_total_cut(vector<int> nodes, vector<pair<int, int>> edges) {
 
   return total;
 }
+
+// --- lit check directives (read by update.py) ---
+// CHECK-NOT: maxcut_impl

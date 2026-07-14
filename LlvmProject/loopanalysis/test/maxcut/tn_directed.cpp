@@ -58,3 +58,6 @@ int compute_directed_mcut(vector<int> nodes, vector<pair<int, int>> edges) {
 
   return best;
 }
+
+// --- lit check directives (read by update.py) ---
+// CHECK-NOT: maxcut_impl

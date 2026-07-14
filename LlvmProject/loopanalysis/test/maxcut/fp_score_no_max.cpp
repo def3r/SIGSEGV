@@ -25,3 +25,6 @@ int score_cut_only(vector<int> S, vector<pair<int, int>> edges) {
   }
   return cut;
 }
+
+// --- lit check directives (read by update.py) ---
+// CHECK-NOT: maxcut_impl
