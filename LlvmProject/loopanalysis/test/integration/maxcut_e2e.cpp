@@ -22,7 +22,6 @@ void log_steps(int cut) {
 int compute_maxcut(vector<int> nodes, vector<pair<int, int>> edges) {
   vector<vector<int>> partitions = enumerate_subsets(nodes);
   int best_val = 0;
-  vector<int> best_S;
   for (auto S : partitions) {
     int crossing = 0;
     for (auto [a, b] : edges) {
@@ -31,10 +30,8 @@ int compute_maxcut(vector<int> nodes, vector<pair<int, int>> edges) {
       if ((a_in && !b_in) || (!a_in && b_in))
         crossing++;
     }
-    if (crossing > best_val) {
+    if (crossing > best_val)
       best_val = crossing;
-      best_S = S;
-    }
   }
   return best_val;
 }

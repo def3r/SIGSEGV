@@ -1,4 +1,4 @@
-// fn_count_not_find.cpp — FALSE NEGATIVE
+// count_member.cpp — membership test via std::count() instead of std::find()
 // MaxCut using `std::count(...) > 0` for membership instead of
 // `std::find(...) != end()`. Semantically identical: count > 0 iff element is
 // present. Step 1.3 identifies candidate calls by checking the mangled name for

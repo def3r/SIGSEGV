@@ -1,4 +1,4 @@
-// tn_directed.cpp — FALSE POSITIVE (pass bug!)
+// directed.cpp — directed cut condition (AND not XOR) — pass rejects
 // Directed maxcut: counts edges that cross S→V\S in ONE direction only
 // (a∈S and b∉S), using an AND condition instead of XOR.
 //

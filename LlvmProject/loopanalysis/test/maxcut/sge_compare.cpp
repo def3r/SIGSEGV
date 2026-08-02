@@ -1,6 +1,6 @@
-// fn_sge_compare.cpp — TRUE NEGATIVE
-// MaxCut where ties go to the LAST visited subset (>= instead of >). SGE
-// semantics commit to a specific output (the last tied subset wins) that is
+// sge_compare.cpp — max comparison uses >= (sge) instead of > (sgt) — pass
+// rejects MaxCut where ties go to the LAST visited subset (>= instead of >).
+// SGE semantics commit to a specific output (the last tied subset wins) that is
 // outside the pass's target: the pass identifies algorithms where any best
 // subset is acceptable, not ones with a defined tie-breaking rule.
 //

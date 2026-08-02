@@ -28,29 +28,29 @@ OPT_PASSES   = ('sroa,mem2reg,loop-simplify,lcssa,indvars,'
                 'simplifycfg,instcombine,simplifycfg,instcombine')
 
 RUN_LINE = ('; RUN: %opt -load-pass-plugin %plugin '
-            '-passes=maxcut-cpp-pass -S %s 2>&1 | %FileCheck %s\n')
+            '-passes=maxcut-pass -S %s 2>&1 | %FileCheck %s\n')
 
 # Maps .cpp basename (without extension) → grep pattern for mangled name.
 # Pattern is a Python regex matched against mangled symbol names in the .ll.
 FUNC_GREP = {
-    'fn_count_not_find':  r'compute_maxcut_cnt',
-    'fn_long_edges':      r'compute_maxcut_ll',
-    'fn_nonzero_init':    r'compute_maxcut_sentinel',
-    'fn_sge_compare':     r'compute_maxcut_sge',
-    'fn_uint_subset':     r'compute_maxcut_uint',
-    'fn_weight2':         r'compute_maxcut_w2',
-    'fp_diff_containers': r'compute_bip_cut',
-    'fp_score_no_max':    r'score_cut_only',
-    'fp_three_finds':     r'compute_hyper_cut',
-    'tn_both_in':         r'compute_max_int',
-    'tn_directed':        r'compute_directed',
-    'tn_min_cut':         r'compute_mincut',
-    'tn_sum':             r'compute_total_cut',
-    'tp_basic':           r'compute_maxcut[^_v]',
-    'fn_inner_side_effect': r'compute_maxcut_log',
-    'fn_memset_external':  r'compute_maxcut_ext[^_v]',
-    'tp_memset_init':     r'compute_maxcut[^_v]',
-    'tp_val_only':        r'compute_maxcut_v',
+    'basic':           r'compute_maxcut[^_v]',
+    'val_only':        r'compute_maxcut_v',
+    'memset_init':     r'compute_maxcut[^_v]',
+    'count_member':    r'compute_maxcut_cnt',
+    'wide_edges':      r'compute_maxcut_ll',
+    'nonzero_init':    r'compute_maxcut_sentinel',
+    'sge_compare':     r'compute_maxcut_sge',
+    'uint_nodes':      r'compute_maxcut_uint',
+    'weighted':        r'compute_maxcut_w2',
+    'extern_memset':   r'compute_maxcut_ext[^_v]',
+    'inner_log':       r'compute_maxcut_log',
+    'diff_containers': r'compute_bip_cut',
+    'score_no_max':    r'score_cut_only',
+    'three_finds':     r'compute_hyper_cut',
+    'both_in':         r'compute_max_int',
+    'directed':        r'compute_directed',
+    'min_cut':         r'compute_mincut',
+    'sum_cut':         r'compute_total_cut',
 }
 
 _CHECK_RE = re.compile(r'\s*//\s*((?:CHECK[^:]*|XFAIL):)(.*)')

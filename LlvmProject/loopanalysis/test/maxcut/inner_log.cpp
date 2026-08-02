@@ -1,4 +1,4 @@
-// fn_inner_side_effect.cpp — FALSE NEGATIVE guard / TRUE NEGATIVE
+// inner_log.cpp — log_steps() called inside inner loop — pass rejects
 // MaxCut-shaped outer+inner loop structure, but the inner loop also calls
 // log_steps() — an external function with side effects (writes to cout).
 //
@@ -22,7 +22,9 @@ using namespace std;
 
 vector<vector<int>> enumerate_subsets(vector<int>& nodes);
 
-void log_steps(int cut) { cout << cut << "\n"; }
+void log_steps(int cut) {
+  cout << cut << "\n";
+}
 
 int compute_maxcut_log(vector<int> nodes, vector<pair<int, int>> edges) {
   vector<vector<int>> partitions = enumerate_subsets(nodes);
@@ -44,7 +46,7 @@ int compute_maxcut_log(vector<int> nodes, vector<pair<int, int>> edges) {
 
     if (crossing > best_val) {
       best_val = crossing;
-      best_S   = S;
+      best_S = S;
     }
   }
 

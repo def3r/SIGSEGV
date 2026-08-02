@@ -1,5 +1,5 @@
-// fp_three_finds.cpp — TRUE NEGATIVE
-// Inner loop has THREE std::find calls (one per endpoint of a 3-uniform
+// three_finds.cpp — inner loop has 3 membership checks (hyperedge) — pass
+// rejects Inner loop has THREE std::find calls (one per endpoint of a 3-uniform
 // hyperedge). Step 1.3 collects all std::find calls and requires exactly 2;
 // finding a third causes Finds.size() > 2 → reject (or the final != 2 check).
 //
@@ -30,9 +30,11 @@ int compute_hyper_cut(vector<int> nodes, vector<Edge3> hedges) {
       bool v_in = find(S.begin(), S.end(), e.v) != S.end();
       bool w_in = find(S.begin(), S.end(), e.w) != S.end();
       int cnt = (int)u_in + (int)v_in + (int)w_in;
-      if (cnt == 1 || cnt == 2) cut++;
+      if (cnt == 1 || cnt == 2)
+        cut++;
     }
-    if (cut > best) best = cut;
+    if (cut > best)
+      best = cut;
   }
   return best;
 }

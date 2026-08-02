@@ -1,4 +1,4 @@
-// fn_uint_subset.cpp — FALSE NEGATIVE
+// uint_nodes.cpp — node IDs as unsigned int
 // MaxCut with vertex IDs as `unsigned int`. The pass hardcodes the subset
 // end() demangled name as "std::vector<int, std::allocator<int>>::end()".
 // With vector<unsigned>, the demangled name becomes

@@ -1,4 +1,4 @@
-// tp_val_only.cpp — FALSE NEGATIVE (pass limitation)
+// val_only.cpp — MaxCut with value-only tracking (no best_S output)
 // Same MaxCut algorithm but WITHOUT the vector<int> best_S assignment in the
 // outer update block. This causes instcombine/simplifycfg to fold the empty
 // if-then block into a `select` instruction rather than leaving a phi merge.

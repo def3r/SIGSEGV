@@ -1,4 +1,4 @@
-// tp_memset_init.cpp — TRUE POSITIVE
+// memset_init.cpp — local vector re-init folds to llvm.memset after instcombine
 // MaxCut with a local vector<pair<int,int>> accumulating crossing edges inside
 // the outer loop body.  After sroa + instcombine the three null-pointer stores
 // that initialise that vector collapse into a single llvm.memset intrinsic.
@@ -38,7 +38,7 @@ int compute_maxcut(vector<int> nodes, vector<pair<int, int>> edges) {
 
     if (crossing > best_val) {
       best_val = crossing;
-      best_S   = S;
+      best_S = S;
     }
   }
 

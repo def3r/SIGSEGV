@@ -1,6 +1,11 @@
 // $ clang -emit-llvm -S -Xclang -disable-O0-optnone maxcut.c -o maxcut_raw.ll
-// $ opt -load-pass-plugin=../build/MinPass.so -passes="min-pass"
-// -disable-output maxcut.ll
+// $ opt -load-pass-plugin=../build/MinPass.so -passes="min-pass" -disable-output maxcut.ll
+
+int actual() {
+  int cut = 0;
+
+  return cut;
+}
 
 int maxcut_base(int edges[][2], int num_edges, int* partition) {
   int cut = 0;

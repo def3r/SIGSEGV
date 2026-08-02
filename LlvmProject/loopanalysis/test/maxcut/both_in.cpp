@@ -1,7 +1,7 @@
-// tn_both_in.cpp — FALSE POSITIVE (pass bug!)
-// Counts edges where BOTH endpoints are inside S — effectively the number of
-// "internal edges" (a measure of subgraph density). This is the opposite of
-// cut-edge counting. NOT a MaxCut algorithm.
+// both_in.cpp — counts edges where BOTH endpoints are in S, not a cut — pass
+// rejects Counts edges where BOTH endpoints are inside S — effectively the
+// number of "internal edges" (a measure of subgraph density). This is the
+// opposite of cut-edge counting. NOT a MaxCut algorithm.
 //
 // Expected: should NOT be detected. BUT the current pass HAS THE SAME BUG
 // as tn_directed.cpp:

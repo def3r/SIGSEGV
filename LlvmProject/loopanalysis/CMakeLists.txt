@@ -15,10 +15,11 @@ include_directories(${LLVM_INCLUDE_DIRS})
 
 add_llvm_pass_plugin(MinPass
   pass.cpp
-  maxcut_cpp_pass.cpp
+  maxcut_pass.cpp
+  tsp_pass.cpp
 )
 
-# ── Testing ───────────────────────────────────────────────────────────────────
+# Testing
 enable_testing()
 find_package(Python3 COMPONENTS Interpreter)
 
@@ -41,14 +42,22 @@ if(NOT LLVM_EXTERNAL_LIT)
 endif()
 
 if(Python3_EXECUTABLE AND LLVM_EXTERNAL_LIT)
-  add_lit_testsuite(check-maxcut "Running maxcut-cpp-pass lit tests"
+  add_lit_testsuite(check-maxcut "Running maxcut-pass lit tests"
     ${CMAKE_CURRENT_SOURCE_DIR}/test/maxcut
     DEPENDS MinPass
   )
   message(STATUS "check-maxcut target enabled (lit: ${LLVM_EXTERNAL_LIT})")
+  add_lit_testsuite(check-tsp "Running tsp-pass lit tests"
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/tsp
+    DEPENDS MinPass
+  )
+  message(STATUS "check-tsp target enabled (lit: ${LLVM_EXTERNAL_LIT})")
 elseif(NOT Python3_EXECUTABLE)
   message(STATUS "check-maxcut disabled — Python 3 interpreter not found")
+  message(STATUS "check-tsp disabled — Python 3 interpreter not found")
 else()
   message(STATUS "check-maxcut disabled — "
+    "pass -DLLVM_EXTERNAL_LIT=/path/to/llvm-lit to enable")
+  message(STATUS "check-tsp disabled — "
     "pass -DLLVM_EXTERNAL_LIT=/path/to/llvm-lit to enable")
 endif()

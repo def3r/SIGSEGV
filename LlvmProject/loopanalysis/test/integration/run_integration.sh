@@ -3,7 +3,7 @@
 #
 # Steps:
 #   1. clang: C++ source → unoptimised LLVM IR
-#   2. opt:   optimisation passes + maxcut-cpp-pass → transformed IR
+#   2. opt:   optimisation passes + maxcut-pass → transformed IR
 #              (brute-force loops replaced with @maxcut_impl)
 #   3. clang: transformed IR → object file
 #   4. link:  object + libc2cudaq.a → binary using cudaq's clang-16 directly
@@ -30,7 +30,59 @@ C2CUDAQ_ROOT="/home/def3r/def3r/SIGSEGV/QuantumComp/c2cudaq"
 
 CLANG="${CLANG:-clang++}"
 OPT="${OPT:-/home/def3r/def3r/llvm-project/install/bin/opt}"
+LLVM_EXTRACT="${LLVM_EXTRACT:-/home/def3r/def3r/llvm-project/install/bin/llvm-extract}"
 CUDAQ_DIR="${CUDAQ_DIR:-/home/def3r/.cudaq}"
+
+# Optional --func=<name>: after each opt step, dump the CFG of that function
+# as a dot file in the build directory so it can be viewed with xdot.
+FUNC=""
+for _arg in "$@"; do
+    case "$_arg" in
+        --func=*) FUNC="${_arg#--func=}" ;;
+        *) echo "Unknown argument: $_arg"; exit 1 ;;
+    esac
+done
+
+# dump_dot_cfg <ll_file> <label>
+# Extracts the CFG of $FUNC from <ll_file> as <build>/<label>_<func>.dot.
+# No-op when --func was not passed.
+dump_dot_cfg() {
+    local ll_file="$1" label="$2"
+    [[ -z "$FUNC" ]] && return 0
+
+    # Find the IR symbol whose demangled base name matches $FUNC.
+    local sym=''
+    while IFS= read -r s; do
+        local base
+        base=$(c++filt "$s" 2>/dev/null | sed 's/(.*//')
+        if [[ "$base" == "$FUNC" ]]; then sym="$s"; break; fi
+    done < <(grep -E '^define ' "$ll_file" | grep -oE '@[_a-zA-Z0-9.]+' | tr -d '@')
+
+    if [[ -z "$sym" ]]; then
+        echo "      [dot-cfg] no function '$FUNC' in $(basename "$ll_file")"
+        return 0
+    fi
+
+    local ex_ll="$BUILD/${label}_${FUNC}_ex.ll"
+    local dot_out="$BUILD/${label}_${FUNC}.dot"
+
+    # Isolate the function so only one dot file is generated.
+    "$LLVM_EXTRACT" -func="$sym" "$ll_file" -S -o "$ex_ll" 2>/dev/null
+
+    # dot-cfg writes <prefix>.<sym>.dot in CWD; use label as prefix so each
+    # step gets a distinct filename.
+    (cd "$BUILD" && "$OPT" -passes=dot-cfg \
+        -cfg-dot-filename-prefix="$label" \
+        -disable-output "$(basename "$ex_ll")" 2>/dev/null)
+
+    if [[ -f "$BUILD/${label}.${sym}.dot" ]]; then
+        mv "$BUILD/${label}.${sym}.dot" "$dot_out"
+        echo "      [dot-cfg] $dot_out"
+        echo "      [dot-cfg] view: xdot $dot_out"
+    else
+        echo "      [dot-cfg] warning: expected ${label}.${sym}.dot was not generated"
+    fi
+}
 
 PLUGIN="$PROJECT_ROOT/build/MinPass.so"
 LIB="$C2CUDAQ_ROOT/build/libc2cudaq.a"
@@ -46,22 +98,32 @@ echo " Compiling "
 echo "=========================================="
 echo ""
 
-# ── Step 1: C++ → unoptimised IR ─────────────────────────────────────────────
-echo "[1/4] clang: source → LLVM IR"
+# Step 1: C++ → unoptimised IR
+echo "[1/5] clang: source → LLVM IR"
 "$CLANG" -S -emit-llvm -O0 -fno-inline \
     -Xclang -disable-O0-optnone \
     -fno-discard-value-names \
     -std=c++20 \
     "$SRC" -o "$BUILD/maxcut_e2e.ll" 2>&1
 echo "      $BUILD/maxcut_e2e.ll"
+dump_dot_cfg "$BUILD/maxcut_e2e.ll" "step1_unopt"
 
-# ── Step 2: optimise + apply pass ────────────────────────────────────────────
+# Step 2: canonicalization passes only (no maxcut-pass)
 echo ""
-echo "[2/4] opt: passes + maxcut-cpp-pass → transformed IR"
+echo "[2/5] opt: canonicalization passes → canon IR"
+"$OPT" -passes="$OPT_PASSES" \
+    "$BUILD/maxcut_e2e.ll" -S -o "$BUILD/maxcut_e2e_canon.ll" 2>&1
+echo "      $BUILD/maxcut_e2e_canon.ll"
+dump_dot_cfg "$BUILD/maxcut_e2e_canon.ll" "step2_canon"
+
+# Step 3: maxcut-pass on already-canonicalised IR
+echo ""
+echo "[3/5] opt: maxcut-pass → transformed IR"
 "$OPT" -load-pass-plugin "$PLUGIN" \
-    -passes="$OPT_PASSES,maxcut-cpp-pass" \
-    "$BUILD/maxcut_e2e.ll" -S -o "$BUILD/maxcut_e2e_transformed.ll" 2>&1
+    -passes=maxcut-pass \
+    "$BUILD/maxcut_e2e_canon.ll" -S -o "$BUILD/maxcut_e2e_transformed.ll" 2>&1
 echo "      $BUILD/maxcut_e2e_transformed.ll"
+dump_dot_cfg "$BUILD/maxcut_e2e_transformed.ll" "step3_transformed"
 
 echo ""
 if grep -q "call i32 @maxcut_impl" "$BUILD/maxcut_e2e_transformed.ll"; then
@@ -75,15 +137,15 @@ else
     exit 1
 fi
 
-# ── Step 3: transformed IR → object ──────────────────────────────────────────
+# Step 4: transformed IR → object
 echo ""
-echo "[3/4] clang: transformed IR → object"
+echo "[4/5] clang: transformed IR → object"
 "$CLANG" -c "$BUILD/maxcut_e2e_transformed.ll" -o "$BUILD/maxcut_e2e.o" 2>&1
 echo "      $BUILD/maxcut_e2e.o"
 
-# ── Step 4: link with cudaq runtime ──────────────────────────────────────────
+# Step 5: link with cudaq runtime
 echo ""
-echo "[4/4] clang: link with libc2cudaq.a + cudaq runtime"
+echo "[5/5] clang: link with libc2cudaq.a + cudaq runtime"
 "$CLANG" \
     -Wl,-rpath,"$CUDAQ_DIR/lib" \
     -L"$CUDAQ_DIR/lib" \
@@ -97,7 +159,7 @@ echo "[4/4] clang: link with libc2cudaq.a + cudaq runtime"
     -o "$BUILD/maxcut_e2e" 2>&1
 echo "      $BUILD/maxcut_e2e"
 
-# ── Run ───────────────────────────────────────────────────────────────────────
+# Run
 echo ""
 echo "=========================================="
 echo " Running"

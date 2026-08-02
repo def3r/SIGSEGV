@@ -1,4 +1,4 @@
-// tn_min_cut.cpp — TRUE NEGATIVE
+// min_cut.cpp — tracks minimum crossing count, not maximum — pass rejects
 // Min-cut by brute-force subset enumeration. Structurally identical to the
 // reference MaxCut except the outer comparison tracks the MINIMUM crossing
 // count, not the maximum.

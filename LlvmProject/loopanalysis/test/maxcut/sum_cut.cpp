@@ -1,6 +1,6 @@
-// tn_sum.cpp — TRUE NEGATIVE
-// Computes the SUM of cut values across ALL subsets, rather than tracking the
-// maximum. The outer accumulator is ADD-based, not max-based.
+// sum_cut.cpp — sums all cut values across subsets (no max tracking) — pass
+// rejects Computes the SUM of cut values across ALL subsets, rather than
+// tracking the maximum. The outer accumulator is ADD-based, not max-based.
 //
 // Expected: NOT detected. Correctly rejected at Phase 2.4:
 //   The outer loop has no `icmp sgt(inner_acc, outer_acc)` — the outer

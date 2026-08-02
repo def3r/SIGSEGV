@@ -1,4 +1,4 @@
-// fn_weight2.cpp — FALSE NEGATIVE
+// weighted.cpp — crossing edges contribute weight 2 instead of 1
 // MaxCut where each crossing edge contributes weight 2 instead of 1.
 // `cut += 2` compiles to add(AccPhi, 2). Step 1.6's isIncrement() accepts only
 // ConstantInt(1) or ZExtInst-from-i1; ConstantInt(2) fails both branches.
@@ -27,7 +27,8 @@ int compute_maxcut_w2(vector<int> nodes, vector<pair<int, int>> edges) {
     for (auto [u, v] : edges) {
       bool u_in = find(S.begin(), S.end(), u) != S.end();
       bool v_in = find(S.begin(), S.end(), v) != S.end();
-      if (u_in != v_in) cut += 2;  // uniform weight 2 per crossing edge
+      if (u_in != v_in)
+        cut += 2;  // uniform weight 2 per crossing edge
     }
     if (cut > best) {
       best = cut;

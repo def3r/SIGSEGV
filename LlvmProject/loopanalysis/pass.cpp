@@ -195,6 +195,7 @@ struct MinPass : PassInfoMixin<MinPass> {
 }  // namespace
 
 void registerMaxCutCppPass(PassBuilder& PB);
+void registerTspPass(PassBuilder& PB);
 
 extern "C" ::llvm::PassPluginLibraryInfo LLVM_ATTRIBUTE_WEAK
 llvmGetPassPluginInfo() {
@@ -210,5 +211,6 @@ llvmGetPassPluginInfo() {
                   return false;
                 });
             registerMaxCutCppPass(PB);
+            registerTspPass(PB);
           }};
 }

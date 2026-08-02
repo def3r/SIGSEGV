@@ -1,4 +1,4 @@
-// tp_basic.cpp — TRUE POSITIVE
+// basic.cpp — canonical MaxCut algorithm
 // Same algorithm as the reference (maxcut_actual.cpp), different
 // function/variable names. Expected: DETECTED by maxcut-cpp-pass.
 //
@@ -17,8 +17,6 @@
 #include <vector>
 using namespace std;
 
-// Declared, not defined — appears as external declaration in extracted IR.
-// Structurally equivalent to setsubs() in the reference.
 vector<vector<int>> enumerate_subsets(vector<int>& vertices);
 
 // Same algorithm as reference actual(), but renamed throughout.
@@ -37,7 +35,6 @@ int compute_maxcut(vector<int> nodes, vector<pair<int, int>> edges) {
     for (auto [a, b] : edges) {
       bool a_in = find(S.begin(), S.end(), a) != S.end();
       bool b_in = find(S.begin(), S.end(), b) != S.end();
-      // XOR: exactly one endpoint in S
       if ((a_in && !b_in) || (!a_in && b_in)) {
         crossing++;
         crossing_edges.push_back({a, b});

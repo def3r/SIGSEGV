@@ -1,4 +1,4 @@
-// fn_nonzero_init.cpp — FALSE NEGATIVE
+// nonzero_init.cpp — outer max accumulator initialised to -1 sentinel (XFAIL)
 // MaxCut where the outer max accumulator `best` is initialised to -1 as a
 // pessimistic sentinel (meaning "no valid cut found yet"). Step 2.1 checks
 // that the i32 phi coming from the preheader is zero (Init->isZero()); -1
@@ -26,7 +26,8 @@ int compute_maxcut_sentinel(vector<int> nodes, vector<pair<int, int>> edges) {
     for (auto [u, v] : edges) {
       bool u_in = find(S.begin(), S.end(), u) != S.end();
       bool v_in = find(S.begin(), S.end(), v) != S.end();
-      if (u_in != v_in) cut++;
+      if (u_in != v_in)
+        cut++;
     }
     if (cut > best) {
       best = cut;

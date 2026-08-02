@@ -1,4 +1,4 @@
-// fn_long_edges.cpp — FALSE NEGATIVE (pass limitation: hardcoded GEP stride)
+// wide_edges.cpp — edge endpoints as pair<long long, long long>
 // MaxCut algorithm identical to the reference, but with edge endpoints as
 // `long long` instead of `int`. This is still a valid MaxCut — the graph
 // structure is the same, just using 64-bit node IDs.

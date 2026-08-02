@@ -522,7 +522,8 @@ static std::optional<ScoringLoopMatch> matchScoringLoop(Loop* L) {
       // memset/memcpy/memmove to a local alloca are value-copy equivalents:
       // e.g. the compiler copies pair<long long,long long> (too large for
       // registers) into a local slot via llvm.memcpy for the auto [a,b]
-      // structured binding.  Mirror the same exception used in checkSideEffects.
+      // structured binding.  Mirror the same exception used in
+      // checkSideEffects.
       if (auto* II = dyn_cast<IntrinsicInst>(CB)) {
         auto IID = II->getIntrinsicID();
         if (IID == Intrinsic::memset || IID == Intrinsic::memcpy ||
@@ -544,7 +545,8 @@ static std::optional<ScoringLoopMatch> matchScoringLoop(Loop* L) {
           continue;
       }
       LLVM_DEBUG(dbgs() << "[inner-check] unrecognised side-effecting call "
-                           "in scoring loop: " << I << "\n");
+                           "in scoring loop: "
+                        << I << "\n");
       return std::nullopt;
     }
   }
@@ -836,8 +838,8 @@ static bool checkLiveOuts(const MaxCutMatch& M) {
   //       break;
   //     }
   //   if (!InExit) {
-  //     LLVM_DEBUG(dbgs() << "[gate1] MaxPhi used outside exit: " << *UI << "\n");
-  //     return false;
+  //     LLVM_DEBUG(dbgs() << "[gate1] MaxPhi used outside exit: " << *UI <<
+  //     "\n"); return false;
   //   }
   // }
   return true;
@@ -878,14 +880,13 @@ static bool checkSideEffects(const MaxCutMatch& M, Value*& OutBestSAlloca) {
         // vector default-init stores into memset, so without this they'd be
         // rejected even though plain stores are always skipped.
         // Only allow if destination is a local alloca (not external memory).
-        if (IID == Intrinsic::memset ||
-            IID == Intrinsic::memcpy ||
+        if (IID == Intrinsic::memset || IID == Intrinsic::memcpy ||
             IID == Intrinsic::memmove) {
           Value* Dest = II->getArgOperand(0)->stripPointerCasts();
           if (isa<AllocaInst>(Dest))
             continue;
-          LLVM_DEBUG(dbgs() << "[gate2] mem-intrinsic to non-local dest: "
-                            << I << "\n");
+          LLVM_DEBUG(dbgs() << "[gate2] mem-intrinsic to non-local dest: " << I
+                            << "\n");
         }
       }
       Function* Callee = CB->getCalledFunction();
@@ -1016,7 +1017,7 @@ static bool performReplacement(const MaxCutMatch& M, Value* BestSAlloca) {
 
 // Reporting
 static void printMatch(const MaxCutMatch& M) {
-  errs() << "\n  *** MaxCut-CPP pattern matched ***\n";
+  errs() << "\n  *** MaxCut pattern matched ***\n";
 
   errs() << "  -- Scoring loop --\n";
   errs() << "    header      : " << M.Inner.L->getHeader()->getName() << "\n";
@@ -1064,10 +1065,10 @@ static void printMatch(const MaxCutMatch& M) {
 
 // Pass
 namespace {
-struct MaxCutCppPass : PassInfoMixin<MaxCutCppPass> {
+struct MaxCutPass : PassInfoMixin<MaxCutPass> {
   PreservedAnalyses run(Function& F, FunctionAnalysisManager& AM) {
     LoopInfo& LI = AM.getResult<LoopAnalysis>(F);
-    LLVM_DEBUG(dbgs() << "[MaxCut-CPP] scanning: " << F.getName() << "\n");
+    LLVM_DEBUG(dbgs() << "[MaxCut] scanning: " << F.getName() << "\n");
 
     SmallVector<MaxCutMatch, 2> Matches;
     SmallVector<Loop*, 16> AllLoops;
@@ -1100,7 +1101,7 @@ struct MaxCutCppPass : PassInfoMixin<MaxCutCppPass> {
     }
 
     if (Matches.empty()) {
-      LLVM_DEBUG(dbgs() << "  no MaxCut-CPP pattern found.\n");
+      LLVM_DEBUG(dbgs() << "  no MaxCut pattern found.\n");
       return PreservedAnalyses::all();
     }
 
@@ -1131,8 +1132,8 @@ void registerMaxCutCppPass(PassBuilder& PB) {
   PB.registerPipelineParsingCallback(
       [](StringRef Name, FunctionPassManager& FPM,
          ArrayRef<PassBuilder::PipelineElement>) -> bool {
-        if (Name == "maxcut-cpp-pass") {
-          FPM.addPass(MaxCutCppPass());
+        if (Name == "maxcut-pass") {
+          FPM.addPass(MaxCutPass());
           return true;
         }
         return false;
