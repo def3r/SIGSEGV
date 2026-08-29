@@ -1,3 +1,0 @@
-CompileFlags:
-  Add: [-std=c++20, -I/home/def3r/.cudaq/include, -I/home/def3r/def3r/SIGSEGV/QuantumComp/c2cudaq/include/]
-
